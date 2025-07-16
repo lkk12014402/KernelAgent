@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kernel-opt"
+version = "0.1.0"
+description = "Generate, test, benchmark, and iterate custom GPU kernels from annotated PyTorch functions using LLM"
+authors = [{name = "Jie Liu"}]
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "anthropic==0.57.1",
+    "fastapi==0.116.1",
+    "langchain_community==0.3.27",
+    "langchain_openai==0.3.28",
+    "numpy==2.3.1",
+    "openai==1.96.0",
+    "python-dotenv==1.1.1",
+    "setuptools==80.9.0",
+    "streamlit==1.46.1",
+    "torch==2.7.1",
+    "triton@git+https://github.com/triton-lang/triton@v3.3.1#subdirectory=python"
+]
+
+[tool.setuptools.packages.find]
+include = ["kernel_opt", "kernel_opt.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
