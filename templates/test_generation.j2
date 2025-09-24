@@ -2,6 +2,19 @@ Generate a comprehensive test for a Triton kernel based on the following problem
 
 {{ problem_description }}
 
+{% if additional_code -%}
+REFERENCE IMPLEMENTATION:
+The following code is a numerically correct reference implementation to help understand the problem:
+
+```python
+{{ additional_code }}
+```
+
+Use this code to understand the algorithm and expected behavior. The test should:
+1. Verify numerical correctness against expected results
+2. Measure performance and compare against PyTorch native operations (NOT the reference implementation)
+{%- endif %}
+
 {% if provided_test_code -%}
 REFERENCE TEST CODE:
 The user has provided the following test code as reference. Use this to understand the expected behavior and requirements, but generate a new test that follows our standardized format:
@@ -88,6 +101,7 @@ def test_kernel():
         # If problem specifies shape/dtype, use those exact values
         # input_tensor = torch.randn(EXACT_SHAPE, dtype=EXACT_DTYPE, device='cuda')
         
+        # 1. CORRECTNESS CHECK
         # Call kernel_function as a normal Python function
         # result = kernel_function(input_tensor, other_args...)
         
@@ -110,8 +124,36 @@ def test_kernel():
         #     print(f"Max absolute difference: {torch.max(torch.abs(result - expected))}")
         #     print(f"Relative error: {torch.max(torch.abs((result - expected) / (expected + 1e-8)))}")
         #     return False
+
+        # 2. PERFORMANCE CHECK
+        # Benchmark Triton kernel
+        # triton_ms = triton.testing.do_bench(
+        #     lambda: kernel_function(input_tensor, other_args...),
+        #     warmup=25,
+        #     rep=100,
+        #     return_mode='mean'
+        # )
         
-        return True  # if successful
+        # Benchmark PyTorch implementation FROM THE TEST (NOT the reference code)
+        # pytorch_ms = triton.testing.do_bench(
+        #     lambda: torch_native_operation(input_tensor, other_args...),  # Same operation used for expected result
+        #     warmup=25,
+        #     rep=100,
+        #     return_mode='mean'
+        # )
+        
+        # speedup = pytorch_ms / triton_ms
+        # print(f"Performance Results:")
+        # print(f"  Triton kernel: {triton_ms:.4f} ms")
+        # print(f"  PyTorch native: {pytorch_ms:.4f} ms")
+        # print(f"  Speedup: {speedup:.2f}x")
+        
+        # Require Triton to be faster than PyTorch
+        # if speedup < 1.0:
+        #     print(f"PERFORMANCE FAILURE: Triton kernel is slower than PyTorch!")
+        #     return False
+        
+        return True  # if both correctness and performance pass
     except Exception as e:
         print(f"Test failed: {e}")
         return False

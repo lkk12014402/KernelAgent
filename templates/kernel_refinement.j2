@@ -2,6 +2,20 @@
 
 TASK: Fix the following Triton kernel implementation based on the test results.
 
+{% if additional_code -%}
+REFERENCE IMPLEMENTATION:
+The following code is a numerically correct reference implementation to help understand the problem:
+
+```python
+{{ additional_code }}
+```
+
+This reference code helps you understand the algorithm. Your fixed Triton kernel should:
+1. Produce the same numerical results as this reference
+2. Be optimized to run FASTER than the PyTorch operations used in the TEST CODE
+3. The reference implementation is NOT the performance target - focus on beating the test's PyTorch code
+{%- endif %}
+
 TEST CODE:
 Analyze this test to understand what the kernel needs to implement:
 ```python
