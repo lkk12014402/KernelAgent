@@ -79,6 +79,7 @@ import json
 import torch
 import triton
 import triton.testing as tt
+from torch.utils.cpp_extension import load_inline
 
 BASELINE_METRICS = None  # Agent will replace with dict when metrics are known.
 
@@ -87,7 +88,35 @@ def test_kernel() -> bool:
     try:
         from kernel import kernel_function
     except Exception as exc:
-        print(f"Failed to import kernel_function: {exc}")
+        try:
+            cu_file = "kernel.cu"
+            cpp_file = "kernel.cpp"
+            cpp_source = ""
+            cuda_source = ""
+
+            # Read both files if they exist
+            if os.path.exists(cu_file):
+                with open(cu_file, "r") as f:
+                    cuda_source = f.read()
+
+            if os.path.exists(cpp_file):
+                with open(cpp_file, "r") as f:
+                    cpp_source = f.read()
+            # Use load_inline for all cases
+            module_name = "cuda_inline"
+            function_name = "kernel_function"
+            cuda_module = load_inline(
+                name=module_name,
+                cpp_sources=cpp_source,
+                cuda_sources=cuda_source,
+                functions=[function_name],
+                no_implicit_headers=True,
+            )
+
+            if hasattr(cuda_module, function_name):
+                kernel_function = getattr(cuda_module, function_name)
+        except Exception as e:
+            print(f"Failed to import kernel_function: {exc}")
         return False
 
     try:
