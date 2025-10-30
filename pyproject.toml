@@ -70,4 +70,5 @@ extend-exclude = [
     "coverage_*",
     "compose_out_auto",
     "KernelBench",
+    "kernel_perf_agent/kernel_opt/database/code_samples/"
 ]
