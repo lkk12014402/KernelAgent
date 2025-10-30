@@ -132,7 +132,7 @@ def _build_composition_prompt(
     guidance = textwrap.dedent(
         """
         You are given:
-        - The original KernelBench problem file (PyTorch module and helpers).
+        - The original problem file (PyTorch module and helpers).
         - A decomposition of the model into fusable subgraphs with exact shapes.
         - Working Triton kernels generated for some subgraphs.
 

@@ -413,8 +413,8 @@ def main(argv: List[str] | None = None) -> int:
     p.add_argument(
         "--jobs",
         type=str,
-        default="1",
-        help="Max concurrent subgraphs to dispatch; use 'auto' to match subgraph count (default: 1)",
+        default="2",
+        help="Max concurrent subgraphs to dispatch (default: 2); use 'auto' to match subgraph count",
     )
     args = p.parse_args(argv)
 

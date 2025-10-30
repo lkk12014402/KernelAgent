@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 _CODE_BLOCK_RE = re.compile(
-    r"^```[ \t]*(\w+)?[ \t]*\n([\s\S]*?)^```[ \t]*$", re.MULTILINE | re.IGNORECASE
+    r"^```[ \t]*(\w+)?[ \t]*\n([\s\S]*?)^```[ \t]*$",
+    re.MULTILINE | re.IGNORECASE,
 )
 
 
@@ -38,19 +39,24 @@ class ExtractedCode:
 
 def extract_single_python_file(output_text: str) -> ExtractedCode:
     """Extract the last complete fenced Python code block from output_text.
-    Raises ValueError if none found or if ast.parse fails.
+    If no explicit "```python" block is found, fall back to the last fenced
+    code block of any language. Validates that the extracted block parses as
+    Python. Raises ValueError if none found or parsing fails.
     """
     text = _normalize_newlines(output_text)
     matches = list(_CODE_BLOCK_RE.finditer(text))
-    # Walk from the end to find the last python-tagged block
+    # Prefer the last python-tagged block
     chosen = None
     for m in reversed(matches):
         lang = (m.group(1) or "").strip().lower()
         if lang == "python":
             chosen = m
             break
+    # Fallback: accept the last fenced block even if language tag is missing
+    if chosen is None and matches:
+        chosen = matches[-1]
     if chosen is None:
-        raise ValueError("no python fenced code block found in output")
+        raise ValueError("no fenced code block found in output")
     body = chosen.group(2)
     code = canonicalize_code(body)
     # Ensure it parses as Python
@@ -58,7 +64,9 @@ def extract_single_python_file(output_text: str) -> ExtractedCode:
         ast.parse(code)
     except SyntaxError as e:
         raise ValueError(f"extracted code has syntax error: {e}")
-    return ExtractedCode(code=code, lang_tag="python")
+    # Report detected tag (or empty) for diagnostics
+    lang_tag = (chosen.group(1) or "").strip().lower() or "python"
+    return ExtractedCode(code=code, lang_tag=lang_tag)
 
 
 def sha256_of_code(code: str) -> str:

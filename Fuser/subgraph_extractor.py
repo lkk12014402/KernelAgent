@@ -128,7 +128,7 @@ def _build_llm_prompt_for_shapes(fused_code: str, problem_code: str) -> Tuple[st
     system = "Return a single JSON array only."
     user_lines: list[str] = []
     user_lines.append(
-        "You are given:\n- The original KernelBench problem (PyTorch).\n- A fused refactor produced by Fuser (PyTorch subgraph modules)."
+        "You are given:\n- The original problem (PyTorch).\n- A fused refactor produced by Fuser (PyTorch subgraph modules)."
     )
     user_lines.append(
         "Task: Identify every unique subgraph by exact shape signature and emit a JSON array matching this schema (and only this schema):"

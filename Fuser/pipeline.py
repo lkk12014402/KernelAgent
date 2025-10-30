@@ -129,7 +129,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         description="End-to-end pipeline: extract → dispatch → compose"
     )
     p.add_argument(
-        "--problem", required=True, help="Absolute path to KernelBench problem file"
+        "--problem", required=True, help="Absolute path to the problem file"
     )
     p.add_argument("--extract-model", default="gpt-5")
     p.add_argument(
@@ -140,8 +140,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument(
         "--dispatch-jobs",
         type=str,
-        default="1",
-        help="Max concurrent KernelAgent subgraph tasks; use 'auto' to match subgraph count",
+        default="2",
+        help="Max concurrent KernelAgent subgraph tasks (default: 2); use 'auto' to match subgraph count",
     )
     p.add_argument("--compose-model", default="o4-mini")
     p.add_argument("--workers", type=int, default=4)
