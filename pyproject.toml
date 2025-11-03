@@ -50,7 +50,7 @@ kernel-agent = "triton_ui:main"
 "Repository" = "https://github.com/pytorch-labs/KernelAgent"
 
 [tool.setuptools.packages.find]
-include = ["triton_kernel_agent*"]
+include = ["triton_kernel_agent*", "kernel_perf_agent*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

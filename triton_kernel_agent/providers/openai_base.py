@@ -2,9 +2,10 @@
 Base provider for OpenAI-compatible APIs.
 """
 
-from typing import List, Dict, Any, Optional
-from .base import BaseProvider, LLMResponse
+from typing import Any, Dict, List, Optional
+
 from ..utils import configure_proxy_environment
+from .base import BaseProvider, LLMResponse
 
 try:
     from openai import OpenAI
@@ -54,9 +55,11 @@ class OpenAICompatibleProvider(BaseProvider):
             content=response.choices[0].message.content,
             model=model_name,
             provider=self.name,
-            usage=response.usage.dict()
-            if hasattr(response, "usage") and response.usage
-            else None,
+            usage=(
+                response.usage.dict()
+                if hasattr(response, "usage") and response.usage
+                else None
+            ),
         )
 
     def get_multiple_responses(
@@ -74,9 +77,11 @@ class OpenAICompatibleProvider(BaseProvider):
                 content=choice.message.content,
                 model=model_name,
                 provider=self.name,
-                usage=response.usage.dict()
-                if hasattr(response, "usage") and response.usage
-                else None,
+                usage=(
+                    response.usage.dict()
+                    if hasattr(response, "usage") and response.usage
+                    else None
+                ),
             )
             for choice in response.choices
         ]
