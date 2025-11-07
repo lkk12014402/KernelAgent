@@ -215,7 +215,7 @@ def evaluate_kernels(
     return result.returncode
 
 
-def _create_problem_description_from_op(self, op, op_name: str) -> str:
+def _create_problem_description_from_op(op, op_name: str) -> str:
     """
     Create a problem description for KernelAgent based on the PyTorch operation.
 
