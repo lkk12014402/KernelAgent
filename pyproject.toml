@@ -45,7 +45,7 @@ dev = [
 
 # Add BackendBench as optional (requires Python >=3.10)
 backendbench = [
-    "backendbench @ git+ssh://git@github.com/meta-pytorch/BackendBench.git ; python_version >= '3.10'",
+    "backendbench @ git+https://git@github.com/meta-pytorch/BackendBench.git ; python_version >= '3.10'",
 ]
 
 
