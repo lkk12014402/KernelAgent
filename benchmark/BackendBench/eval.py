@@ -26,7 +26,6 @@ import os
 import subprocess
 import sys
 from datetime import datetime
-from pathlib import Path
 
 import torch
 from BackendBench.suite import OpInfoTestSuite
@@ -243,10 +242,10 @@ Requirements:
 4. Optimize for GPU performance with proper memory coalescing
 5. Include proper boundary condition handling
 6. Follow Triton best practices for kernel design
-7. The main wrapper function MUST be named exactly: {folder_name}_kernel_impl
+7. The main wrapper function MUST be named exactly: <operator_folder_name>_kernel_impl
 This is REQUIRED for the evaluation framework to load your kernel. Do NOT use generic names like 'kernel_function'.
 Function signature template:
-def {folder_name}_kernel_impl(*args, **kwargs):
+def <operator_folder_name>_kernel_impl(*args, **kwargs):
     # Your implementation here
     pass
 

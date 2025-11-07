@@ -15,7 +15,7 @@
 """
 Call the setup script to create directory structure for PyTorch operators in op_map.
 This creates directories for operators that are actually used in evaluation suites
-(opinfo, torchbench) so LLM researchers can fill them with generated kernels.
+(opinfo, torchbench).
 
 This wrapper calls BackendBench's setup_operator_directories and creates
 a dedicated folder for generated operator kernels.
@@ -50,11 +50,11 @@ def setup_backendbench_operators(
         # Show message if using default directory
         if base_dir == "generated_kernels":
             print(f"ℹ️  Using default directory: {abs_base_dir}")
-            print(f"   (Specify --base-dir to use a different location)\n")
+            print("   (Specify --base-dir to use a different location)\n")
 
         abs_base_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"Setting up BackendBench operator directories...")
+        print("Setting up BackendBench operator directories...")
         print(f"Base directory: {abs_base_dir}")
         print(f"Suite: {suite}")
         print()
@@ -63,11 +63,11 @@ def setup_backendbench_operators(
             base_dir=str(abs_base_dir), verbose=verbose, suite=suite
         )
 
-        print(f"\n✓ BackendBench setup complete!")
+        print("\n✓ BackendBench setup complete!")
         print(f"✓ Operator directories created in: {abs_base_dir}")
 
     except ImportError as e:
-        print(f"✗ Error: Could not import BackendBench")
+        print("✗ Error: Could not import BackendBench")
         print(f"  {e}")
         print("\nMake sure BackendBench is installed:")
         print("  pip install git+ssh://git@github.com/meta-pytorch/BackendBench.git")
