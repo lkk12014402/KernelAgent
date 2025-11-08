@@ -1,0 +1,8 @@
+# Configuration for pipeline.py
+# One-shot pipeline runner: extract → dispatch → compose
+# Shares fuser configuration with auto_agent.py
+
+defaults:
+  - fuser_defaults
+
+problem: ???  # Required: absolute path to the kernelbench problem file

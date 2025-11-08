@@ -1,0 +1,29 @@
+# Configuration for auto_agent.py
+# Converts KernelBench problems either via KernelAgent or Fuser based on complexity
+
+defaults:
+  - override fuser: fuser_defaults
+
+problem: ???  # Required: absolute path to the problem file
+
+# KernelAgent settings
+ka:
+  model: null  # Optional; uses env default if omitted
+  num_workers: 4
+  max_rounds: 10
+  high_reasoning: true
+
+# Router LLM settings
+router:
+  model: gpt-5
+  high_reasoning: true
+  temperature: 0.2
+  max_tokens: 700
+
+# Fuser pipeline settings are loaded from fuser_defaults via defaults
+# Override any specific settings here if needed:
+fuser: {}
+
+# Fallback and routing settings
+routing:
+  allow_fallback: true

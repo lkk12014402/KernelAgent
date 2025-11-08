@@ -1,0 +1,25 @@
+# Shared Fuser pipeline configuration
+# Used by both pipeline.py and auto_agent.py
+
+# Extraction step settings
+extract_model: gpt-5
+
+# Dispatch step settings (KernelAgent for subgraph kernelization)
+dispatch_model: null  # Optional; auto-selects gpt-5 for level2/3, else o4-mini
+dispatch_jobs: 2  # Max concurrent KernelAgent tasks; use 'auto' to match subgraph count
+
+# Composition step settings
+compose_model: o4-mini
+
+# Concurrency and iteration settings
+workers: 4
+max_iters: 5  # Extractor iteration budget
+llm_timeout_s: 1200
+run_timeout_s: 1200
+
+# Output settings
+out_root: null  # Optional; if not set, uses default location
+
+# Verification and composition settings
+verify: false
+compose_max_iters: 5
