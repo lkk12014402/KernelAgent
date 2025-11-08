@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import time
@@ -38,6 +39,10 @@ from triton_kernel_agent.providers.models import (
     get_model_provider,
     MODEL_NAME_TO_CONFIG,
 )
+
+# Turn off noisy HTTPX logging
+httpx_logger = logging.getLogger("httpx")
+httpx_logger.setLevel(logging.WARNING)
 
 
 def _list_kernelbench_problems(base: Path) -> List[Tuple[str, str]]:

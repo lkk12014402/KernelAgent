@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import ast
+import logging
 import os
 import tarfile
 import time
@@ -42,6 +43,10 @@ except Exception:  # pragma: no cover
 from Fuser.config import OrchestratorConfig, new_run_id
 from Fuser.orchestrator import Orchestrator
 from Fuser.paths import ensure_abs_regular_file, make_run_dirs, PathSafetyError
+
+# Turn off noisy HTTPX logging
+httpx_logger = logging.getLogger("httpx")
+httpx_logger.setLevel(logging.WARNING)
 
 
 @dataclass
