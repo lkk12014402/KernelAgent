@@ -2,13 +2,14 @@
 Main Triton Kernel Generation Agent.
 """
 
-import os
 import json
-import re
-from pathlib import Path
-from typing import Optional, List, Dict, Any
-from datetime import datetime
 import logging
+import os
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
 
 from .manager import WorkerManager
@@ -202,7 +203,7 @@ class TritonKernelAgent:
 
                 # Call LLM API
                 messages = [{"role": "user", "content": prompt}]
-                response_text = self._call_llm(messages, max_tokens=8192)
+                response_text = self._call_llm(messages, max_tokens=24576)
 
                 # Extract test code from response
                 test_code = self._extract_code_from_response(response_text)

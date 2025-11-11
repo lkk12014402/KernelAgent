@@ -16,6 +16,12 @@ from collections import deque
 from .prompt_manager import PromptManager
 from .providers import get_model_provider
 
+from kernel_perf_agent.kernel_opt.database.base import OptHierarchy
+from kernel_perf_agent.kernel_opt.retriever.retriever import Retriever
+from kernel_perf_agent.kernel_opt.prompts.prompt_manager import (
+    PromptManager as PerfPromptManager,
+)
+
 
 class VerificationWorker:
     """Worker that verifies and refines a single kernel implementation."""
@@ -30,6 +36,9 @@ class VerificationWorker:
         openai_api_key: Optional[str] = None,
         openai_model: str = "o3-2025-04-16",
         high_reasoning_effort: bool = True,
+        enable_optimization: bool = True,  # Flag to enable optimization phase
+        optimization_hint: Optional[str] = None,  # e.g., "use persistent programming"
+        optimization_database_path: Optional[Path] = None,  # Path to code_samples
     ):
         """
         Initialize a verification worker.
@@ -59,6 +68,9 @@ class VerificationWorker:
         # History for LLM context
         self.history = deque(maxlen=history_size)
 
+        # Setup logging FIRST (before any logger.xxx() calls)
+        self._setup_logging()
+
         # Initialize provider
         self.provider = None
         try:
@@ -70,8 +82,20 @@ class VerificationWorker:
         # Initialize prompt manager
         self.prompt_manager = PromptManager()
 
-        # Setup logging
-        self._setup_logging()
+        # NEW: Optimization setup
+        self.enable_optimization = enable_optimization
+        self.optimization_hint = optimization_hint or "optimize for performance"
+
+        # Initialize optimization database if enabled
+        self.opt_hierarchy = None
+        if self.enable_optimization:
+            self.opt_hierarchy = OptHierarchy()
+            db_path = optimization_database_path or (
+                Path(__file__).parent.parent
+                / "kernel_perf_agent/kernel_opt/database/code_samples"
+            )
+            self.opt_hierarchy.hard_initialize(db_path)
+            self.logger.info("Initialized optimization database")
 
     def _setup_logging(self):
         """Setup worker-specific logging."""
@@ -247,7 +271,7 @@ class VerificationWorker:
 
                 # Call LLM API
                 messages = [{"role": "user", "content": prompt}]
-                response_text = self._call_llm(messages, max_tokens=8192)
+                response_text = self._call_llm(messages, max_tokens=24576)
 
                 # Extract refined kernel from response
                 refined_kernel = self._extract_code_from_response(response_text)
@@ -275,6 +299,191 @@ class VerificationWorker:
             return f"# Refinement attempt {len(self.history) + 1}\n{kernel_code}"
 
         return kernel_code
+
+    def _optimize_kernel(
+        self,
+        kernel_code: str,
+        problem_description: str,
+        test_code: str,
+        max_opt_rounds: int = 3,
+        additional_code: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """
+        Optimize a working kernel using RAG-based pattern retrieval.
+
+        Args:
+            kernel_code: Working kernel to optimize
+            problem_description: Original problem description
+            test_code: Test code to verify correctness
+            max_opt_rounds: Maximum optimization attempts
+
+        Returns:
+            Tuple of (success, optimized_kernel_code)
+        """
+        if not self.enable_optimization or not self.opt_hierarchy:
+            return False, kernel_code
+
+        self.logger.info("Starting optimization phase")
+
+        self.dsl = "triton"
+        self.kernel_name = "triton_kernel"
+
+        try:
+            # Step 1: RAG Retrieval
+            self.logger.info("Step 1: Retrieving optimization pattern from database")
+            retriever = Retriever(
+                func_prompt=problem_description,
+                opt_prompt=self.optimization_hint,
+                model=self.openai_model,
+                dsl=self.dsl,
+                kernel_name=self.kernel_name,
+                database=self.opt_hierarchy,
+                module_path=self.workdir,
+                debug=True,
+            )
+
+            opt_node, debug_info = retriever.retrieve()
+            self.logger.info(
+                f"Retrieved optimization pattern: {opt_node.opt_desc[:100]}..."
+            )
+            # Step 2: Build optimization prompt using PerfPromptManager
+            self.logger.info("Step 2: Building optimization prompt")
+            perf_prompt_manager = PerfPromptManager(
+                func_source_code=kernel_code,
+                func_prompt=problem_description,
+                opt_prompt=self.optimization_hint,
+                model=self.openai_model,
+                dsl=self.dsl,
+                kernel_name=self.kernel_name,
+                database=self.opt_hierarchy,
+                opt_node=opt_node,
+                module_path=self.workdir,
+                debug=True,
+            )
+
+            opt_prompt, debug_str = perf_prompt_manager.build_rewrite_prompt()
+            self.logger.info(
+                f"Optimization prompt built successfully: {opt_prompt[:100]}..."
+            )
+
+            # Step 3: Try optimization with multiple rounds
+            best_kernel = kernel_code
+            best_perf = None
+            error_feedback = ""
+
+            for opt_round in range(max_opt_rounds):
+                self.logger.info(f"Optimization round {opt_round + 1}/{max_opt_rounds}")
+
+                # Build current prompt with error feedback if available
+                current_prompt = opt_prompt
+                if error_feedback:
+                    current_prompt = f"""{error_feedback}
+
+Please fix the issues in the previous attempt and generate a corrected optimized kernel.
+
+{opt_prompt}
+"""
+
+                # Step 3a: Call LLM (same pattern as _refine_kernel)
+                messages = [{"role": "user", "content": current_prompt}]
+                try:
+                    response_text = self._call_llm(messages, max_tokens=24576)
+                except Exception as e:
+                    self.logger.error(f"LLM call failed: {e}")
+                    error_feedback = (
+                        f"Previous attempt failed: LLM call error - {str(e)}"
+                    )
+                    continue
+
+                # Step 3b: Extract code (same pattern as _refine_kernel)
+                optimized_kernel = self._extract_code_from_response(response_text)
+
+                if not optimized_kernel or len(optimized_kernel) < 100:
+                    self.logger.warning(
+                        f"Failed to extract valid optimized kernel (length: {len(optimized_kernel) if optimized_kernel else 0})"
+                    )
+                    error_feedback = "Previous attempt failed: No valid kernel code extracted from LLM response. Please provide complete Triton kernel code wrapped in ```python code blocks."
+                    continue
+
+                # Step 4: Verify correctness by running tests
+                self.logger.info("Testing optimized kernel...")
+                self._write_kernel(optimized_kernel)
+                success, stdout, stderr = self._run_test()
+
+                if not success:
+                    self.logger.warning(
+                        f"Optimized kernel failed tests: {stderr[:200]}"
+                    )
+                    error_feedback = f"""Previous optimization attempt FAILED with error:
+{stderr[:500]}
+
+The kernel must:
+1. Pass all correctness tests
+2. Maintain the same interface as the original kernel
+3. Be syntactically valid Python/Triton code
+"""
+                    continue
+
+                # Step 5: Passed tests! Extract performance metrics
+                self.logger.info("✅ Optimized kernel passed tests!")
+                perf_metrics = self._extract_performance_metrics(stdout)
+
+                if perf_metrics:
+                    speedup = perf_metrics.get("speedup", 0)
+                    self.logger.info(f"Performance metrics: {perf_metrics}")
+
+                    # Update best if this is better
+                    if best_perf is None or speedup > best_perf.get("speedup", 0):
+                        best_kernel = optimized_kernel
+                        best_perf = perf_metrics
+                        self.logger.info(f"🎉 New best speedup: {speedup:.2f}x")
+                        error_feedback = ""  # Clear error for next iteration
+                    else:
+                        self.logger.info(
+                            f"Speedup {speedup:.2f}x not better than best {best_perf.get('speedup', 0):.2f}x"
+                        )
+                else:
+                    # No metrics available, accept first working optimization
+                    self.logger.info(
+                        "No performance metrics found, accepting optimized kernel"
+                    )
+                    best_kernel = optimized_kernel
+                    break
+
+            # After all rounds, restore original kernel file
+            self._write_kernel(kernel_code)
+
+            # Return best result
+            if best_kernel != kernel_code:
+                self.logger.info("✅ Optimization successful!")
+                if best_perf:
+                    self.logger.info(
+                        f"Final speedup: {best_perf.get('speedup', 'N/A'):.2f}x"
+                    )
+                return True, best_kernel
+            else:
+                self.logger.info("No improvement found, keeping original")
+                return False, kernel_code
+
+        except Exception as e:
+            self.logger.error(f"Optimization failed: {e}")
+            import traceback
+
+            self.logger.error(traceback.format_exc())
+            return False, kernel_code
+
+    def _extract_performance_metrics(self, stdout: str) -> Optional[Dict[str, float]]:
+        """
+        Extract performance metrics from test output.
+        Looks for: PERF_METRICS:{"triton_ms": X, "pytorch_ms": Y, "speedup": Z}
+        """
+        try:
+            match = re.search(r"PERF_METRICS:(\{[^}]+\})", stdout)
+            if match:
+                return json.loads(match.group(1))
+        except Exception as e:
+            self.logger.warning(f"Failed to extract metrics: {e}")
+        return None
 
     def _log_round(
         self, round_num: int, success: bool, kernel_code: str, stdout: str, stderr: str
@@ -322,6 +531,7 @@ class VerificationWorker:
 
         current_kernel = kernel_code
 
+        # PHASE 1: Generation & Correctness (existing code)
         for round_num in range(self.max_rounds):
             # Check if another worker has succeeded
             if success_event.is_set():
@@ -353,6 +563,32 @@ class VerificationWorker:
                 self.logger.info(
                     f"Success! Kernel passed test in round {round_num + 1}"
                 )
+
+                # PHASE 2: Optimization if enabled
+                if self.enable_optimization:
+                    self.logger.info("Entering optimization phase...")
+                    opt_success, optimized_kernel = self._optimize_kernel(
+                        kernel_code=current_kernel,
+                        problem_description=problem_description,
+                        test_code=test_code,
+                        additional_code=additional_code,
+                    )
+
+                    if opt_success:
+                        current_kernel = optimized_kernel
+                        self.logger.info("Using optimized kernel")
+                    else:
+                        self.logger.info("Using original working kernel")
+
+                    return {
+                        "worker_id": self.worker_id,
+                        "success": True,
+                        "kernel_code": current_kernel,
+                        "rounds": round_num + 1,
+                        "optimized": self.enable_optimization and opt_success,  # NEW
+                        "history": list(self.history),
+                    }
+
                 return {
                     "worker_id": self.worker_id,
                     "success": True,
