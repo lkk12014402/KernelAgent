@@ -1,9 +1,6 @@
 # Configuration for auto_agent.py
 # Converts KernelBench problems either via KernelAgent or Fuser based on complexity
 
-defaults:
-  - override fuser: fuser_defaults
-
 problem: ???  # Required: absolute path to the problem file
 
 # KernelAgent settings
@@ -20,10 +17,30 @@ router:
   temperature: 0.2
   max_tokens: 700
 
-# Fuser pipeline settings are loaded from fuser_defaults via defaults
-# Override any specific settings here if needed:
+# Fuser pipeline settings
 fuser:
+  # Extraction step settings
+  extract_model: gpt-5
+
+  # Dispatch step settings
   dispatch_model: o4-mini
+  dispatch_jobs: 2  # Max concurrent tasks; use 'auto' to match subgraph count
+
+  # Composition step settings
+  compose_model: o4-mini
+
+  # Concurrency and iteration settings
+  workers: 4
+  max_iters: 5  # Extractor iteration budget
+  llm_timeout_s: 1200
+  run_timeout_s: 1200
+
+  # Output settings
+  out_root: null  # Optional; if not set, uses default location
+
+  # Verification and composition settings
+  verify: false
+  compose_max_iters: 5
 
 # Fallback and routing settings
 routing:

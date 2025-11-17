@@ -2,7 +2,27 @@
 # One-shot pipeline runner: extract → dispatch → compose
 # Shares fuser configuration with auto_agent.py
 
-defaults:
-  - fuser_defaults
-
 problem: ???  # Required: absolute path to the kernelbench problem file
+
+# Extraction step settings
+extract_model: gpt-5
+
+# Dispatch step settings
+dispatch_model: null
+dispatch_jobs: 2  # Max concurrent tasks; use 'auto' to match subgraph count
+
+# Composition step settings
+compose_model: o4-mini
+
+# Concurrency and iteration settings
+workers: 4
+max_iters: 5  # Extractor iteration budget
+llm_timeout_s: 1200
+run_timeout_s: 1200
+
+# Output settings
+out_root: null  # Optional; if not set, uses default location
+
+# Verification and composition settings
+verify: false
+compose_max_iters: 5
