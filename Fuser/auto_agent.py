@@ -40,10 +40,10 @@ CLI (Hydra-based):
   python -m Fuser.auto_agent problem=/abs/path/to/problem.py \
       ka.model=gpt-5 \
       router.model=gpt-5 \
-      fuser.extract_model=gpt-5 \
-      fuser.dispatch_model=o4-mini \
-      fuser.compose_model=o4-mini \
-      fuser.verify=true \
+      fuser.extracter.model=gpt-5 \
+      fuser.dispatcher.model=o4-mini \
+      fuser.composer.model=o4-mini \
+      fuser.composer.verify=true \
       routing.allow_fallback=false
 
   # Or use a custom config:
@@ -60,7 +60,7 @@ import hashlib
 import json
 import sys
 
-import hydra
+from hydra import main as hydra_main
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -683,7 +683,7 @@ class AutoKernelRouter:
 # ------------------------
 
 
-@hydra.main(
+@hydra_main(
     version_base=None,
     config_path=str(Path(__file__).resolve().parent.parent / "configs/pipeline"),
     config_name="auto_agent",
@@ -706,16 +706,16 @@ def main(cfg: DictConfig) -> int:
         router_high_reasoning=cfg.router.high_reasoning,
         router_temperature=cfg.router.temperature,
         router_max_tokens=cfg.router.max_tokens,
-        extract_model=cfg.fuser.extract_model,
-        dispatch_model=cfg.fuser.dispatch_model,
-        compose_model=cfg.fuser.compose_model,
-        workers=cfg.fuser.workers,
-        max_iters=cfg.fuser.max_iters,
-        llm_timeout_s=cfg.fuser.llm_timeout_s,
-        run_timeout_s=cfg.fuser.run_timeout_s,
-        compose_max_iters=cfg.fuser.compose_max_iters,
-        verify=cfg.fuser.verify,
-        dispatch_jobs=cfg.fuser.dispatch_jobs,
+        extract_model=cfg.fuser.extractor.model,
+        dispatch_model=cfg.fuser.dispatcher.model,
+        compose_model=cfg.fuser.composer.model,
+        workers=cfg.fuser.extractor.workers,
+        max_iters=cfg.fuser.extractor.max_iters,
+        llm_timeout_s=cfg.fuser.extractor.llm_timeout_s,
+        run_timeout_s=cfg.fuser.extractor.run_timeout_s,
+        compose_max_iters=cfg.fuser.composer.max_iters,
+        verify=cfg.fuser.composer.verify,
+        dispatch_jobs=cfg.fuser.dispatcher.jobs,
         allow_fallback=cfg.routing.allow_fallback,
     )
 

@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import hydra
+from hydra import main as hydra_main
 from omegaconf import DictConfig
 
 import gradio as gr
@@ -872,7 +872,7 @@ Select a KernelBench problem, generate fusion-ready PyTorch subgraphs, and downl
     return app
 
 
-@hydra.main(
+@hydra_main(
     version_base=None,
     config_path=str(Path(__file__).resolve().parent.parent / "configs/ui"),
     config_name="fuser_ui",

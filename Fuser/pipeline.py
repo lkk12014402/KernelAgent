@@ -20,16 +20,16 @@ CLI (Hydra-based):
 
   # Override config values:
   python -m Fuser.pipeline problem=/abs/path/to/kernelbench_problem.py \
-      extract_model=gpt-5 \
-      dispatch_model=o4-mini \
-      compose_model=o4-mini \
-      workers=4 \
-      max_iters=5 \
-      llm_timeout_s=1200 \
-      run_timeout_s=1200 \
-      fuser.verify=true \
-      fuser.compose_max_iters=5 \
-      dispatch_jobs=2
+      extractor.model=gpt-5 \
+      dispatcher.model=o4-mini \
+      composer.model=o4-mini \
+      extractor.workers=4 \
+      extractor.max_iters=5 \
+      extractor.llm_timeout_s=1200 \
+      extractor.run_timeout_s=1200 \
+      composer.verify=true \
+      composer.max_iters=5 \
+      dispatcher.jobs=2
 
   # Or use a custom config:
   python -m Fuser.pipeline --config-name custom_pipeline \
@@ -164,17 +164,17 @@ def main(cfg: DictConfig) -> int:
     try:
         res = run_pipeline(
             problem_path=problem_path,
-            extract_model=cfg.extract_model,
-            dispatch_model=cfg.dispatch_model,
-            compose_model=cfg.compose_model,
-            dispatch_jobs=cfg.dispatch_jobs,
-            workers=cfg.workers,
-            max_iters=cfg.max_iters,
-            llm_timeout_s=cfg.llm_timeout_s,
-            run_timeout_s=cfg.run_timeout_s,
+            extract_model=cfg.extractor.model,
+            dispatch_model=cfg.dispatcher.model,
+            compose_model=cfg.composer.model,
+            dispatch_jobs=cfg.dispatcher.jobs,
+            workers=cfg.extractor.workers,
+            max_iters=cfg.extractor.max_iters,
+            llm_timeout_s=cfg.extractor.llm_timeout_s,
+            run_timeout_s=cfg.extractor.run_timeout_s,
             out_root=Path(cfg.out_root) if cfg.out_root else None,
-            verify=cfg.verify,
-            compose_max_iters=cfg.compose_max_iters,
+            verify=cfg.composer.verify,
+            compose_max_iters=cfg.composer.max_iters,
         )
         print(json.dumps(res, indent=2))
         return 0

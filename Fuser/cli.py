@@ -51,7 +51,6 @@ import os
 import multiprocessing as mp
 from pathlib import Path
 
-from dotenv import load_dotenv
 from hydra import main as hydra_main
 from omegaconf import DictConfig
 
@@ -91,7 +90,7 @@ def _load_dotenv_if_present() -> None:
 @hydra_main(
     version_base=None,
     config_path=str(Path(__file__).resolve().parent.parent / "configs/pipeline"),
-    config_name="dispatch_kernel_agent",
+    config_name="orchestrator",
 )
 def main(cfg: DictConfig) -> int:
     _load_dotenv_if_present()

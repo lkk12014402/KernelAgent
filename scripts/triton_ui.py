@@ -22,7 +22,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-import hydra
+from hydra import main as hydra_main
 from omegaconf import DictConfig
 
 import gradio as gr
@@ -652,7 +652,7 @@ def _create_app() -> gr.Blocks:
     return app
 
 
-@hydra.main(
+@hydra_main(
     version_base=None,
     config_path=str(Path(__file__).resolve().parent.parent / "configs/ui"),
     config_name="kernel_agent",

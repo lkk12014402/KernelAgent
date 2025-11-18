@@ -20,27 +20,23 @@ router:
 # Fuser pipeline settings
 fuser:
   # Extraction step settings
-  extract_model: gpt-5
+  extractor:
+    model: gpt-5
+    workers: 4
+    max_iters: 5
+    llm_timeout_s: 1200
+    run_timeout_s: 1200
 
   # Dispatch step settings
-  dispatch_model: o4-mini
-  dispatch_jobs: 2  # Max concurrent tasks; use 'auto' to match subgraph count
+  dispatcher:
+    model: o4-mini
+    jobs: 2  # Max concurrent tasks; use 'auto' to match subgraph count
 
   # Composition step settings
-  compose_model: o4-mini
-
-  # Concurrency and iteration settings
-  workers: 4
-  max_iters: 5  # Extractor iteration budget
-  llm_timeout_s: 1200
-  run_timeout_s: 1200
-
-  # Output settings
-  out_root: null  # Optional; if not set, uses default location
-
-  # Verification and composition settings
-  verify: false
-  compose_max_iters: 5
+  composer:
+    model: o4-mini
+    verify: false
+    max_iters: 5
 
 # Fallback and routing settings
 routing:
