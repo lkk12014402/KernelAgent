@@ -66,6 +66,10 @@ DISALLOWED_TORCH_PATTERNS = [
         re.compile(r"\.forward\("),
         "Calling .forward() indicates torch.nn module usage and is not allowed",
     ),
+    (
+        re.compile(r"\btorch\.ops\.aten\b"),
+        "Low-level torch.ops.aten.* calls are not allowed; implement these ops directly in Triton kernels instead of relying on PyTorch compute",
+    ),
     # Generic tensor-tensor math that must be implemented in Triton kernels
     (
         re.compile(r"\btorch\.(matmul|mm|bmm)\s*\("),
