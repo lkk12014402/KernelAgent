@@ -18,7 +18,7 @@ import os
 import json
 import re
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 from datetime import datetime
 import logging
 from dotenv import load_dotenv
@@ -160,7 +160,7 @@ class TritonKernelAgent:
         self.logger.warning("No code block found in LLM response")
         return None
 
-    def _call_llm(self, messages: List[Dict[str, str]], **kwargs) -> str:
+    def _call_llm(self, messages: list[dict[str, str]], **kwargs) -> str:
         """
         Call the LLM provider for the configured model.
 
@@ -306,7 +306,7 @@ if __name__ == "__main__":
 
     def _generate_kernel_seeds(
         self, problem_description: str, test_code: str, num_seeds: int | None = None
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Generate initial kernel implementations using OpenAI API.
 
@@ -423,7 +423,7 @@ def kernel_function(*args, **kwargs):
 
     def generate_kernel(
         self, problem_description: str, test_code: str | None = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate an optimized Triton kernel for the given problem.
 

@@ -16,7 +16,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import Any
 import os
 
 
@@ -27,7 +27,7 @@ class LLMResponse:
     content: str
     model: str
     provider: str
-    usage: Dict[str, Any] | None = None
+    usage: dict[str, Any] | None = None
     response_id: str | None = None
 
 
@@ -45,7 +45,7 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def get_response(
-        self, model_name: str, messages: List[Dict[str, str]], **kwargs
+        self, model_name: str, messages: list[dict[str, str]], **kwargs
     ) -> LLMResponse:
         """
         Get response from the LLM provider.
@@ -62,8 +62,8 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def get_multiple_responses(
-        self, model_name: str, messages: List[Dict[str, str]], n: int = 1, **kwargs
-    ) -> List[LLMResponse]:
+        self, model_name: str, messages: list[dict[str, str]], n: int = 1, **kwargs
+    ) -> list[LLMResponse]:
         """
         Get multiple responses from the LLM provider.
 

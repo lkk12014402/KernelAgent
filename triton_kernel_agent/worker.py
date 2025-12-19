@@ -24,7 +24,7 @@ import sys
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from .prompt_manager import PromptManager
 from utils.providers import get_model_provider
@@ -266,7 +266,7 @@ class VerificationWorker:
                 return message
         return None
 
-    def _run_test(self) -> Tuple[bool, str, str]:
+    def _run_test(self) -> tuple[bool, str, str]:
         """
         Run the test script and capture results.
 
@@ -327,7 +327,7 @@ class VerificationWorker:
     def _refine_kernel(
         self,
         kernel_code: str,
-        error_info: Dict[str, str],
+        error_info: dict[str, str],
         problem_description: str,
         test_code: str,
     ) -> str:
@@ -419,7 +419,7 @@ class VerificationWorker:
         test_code: str,
         problem_description: str,
         success_event: mp.Event,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run verification and refinement loop.
 

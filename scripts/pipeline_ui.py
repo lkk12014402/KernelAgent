@@ -24,7 +24,7 @@ import traceback
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+
 
 import gradio as gr
 from dotenv import load_dotenv
@@ -35,9 +35,9 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 
-def _list_kernelbench_problems(base: Path) -> List[Tuple[str, str]]:
+def _list_kernelbench_problems(base: Path) -> list[tuple[str, str]]:
     """Return list of (label, absolute_path) pairs for KernelBench problems."""
-    problems: List[Tuple[str, str]] = []
+    problems: list[tuple[str, str]] = []
     if not base.exists():
         return problems
     for level_dir in sorted(base.glob("level*")):
@@ -449,7 +449,7 @@ class PipelineUI:
         compose_max_iters: int,
         verify: bool,
         user_api_key: str | None,
-    ) -> Tuple[str, str, str, str, str | None]:
+    ) -> tuple[str, str, str, str, str | None]:
         problem_mapping = {label: path for label, path in self.problem_choices}
         selected_path = problem_mapping.get(selected_problem_label, "")
         # Use description override if present; otherwise selected path

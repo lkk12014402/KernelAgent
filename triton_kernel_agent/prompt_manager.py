@@ -15,7 +15,7 @@
 """Prompt Manager for handling Jinja2 templates."""
 
 from pathlib import Path
-from typing import Dict
+
 
 try:
     from jinja2 import Environment, FileSystemLoader, Template
@@ -143,7 +143,7 @@ class PromptManager:
         problem_description: str,
         test_code: str,
         kernel_code: str,
-        error_info: Dict[str, str],
+        error_info: dict[str, str],
         history_context: str | None = None,
         triton_guidelines: str | None = None,
     ) -> str:

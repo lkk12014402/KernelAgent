@@ -25,7 +25,7 @@ import traceback
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+
 
 import gradio as gr
 from dotenv import load_dotenv
@@ -51,9 +51,9 @@ class RunArtifacts:
     zip_path: Path | None
 
 
-def _list_kernelbench_problems(base: Path) -> List[Tuple[str, str]]:
+def _list_kernelbench_problems(base: Path) -> list[tuple[str, str]]:
     """Return list of (label, absolute_path) pairs for KernelBench problems."""
-    problems: List[Tuple[str, str]] = []
+    problems: list[tuple[str, str]] = []
     if not base.exists():
         return problems
     for level_dir in sorted(base.glob("level*")):
@@ -80,7 +80,7 @@ def _format_classes_summary(code_text: str) -> str:
         if isinstance(node, ast.Name):
             return node.id
         if isinstance(node, ast.Attribute):
-            parts: List[str] = []
+            parts: list[str] = []
             cur: ast.AST | None = node
             while isinstance(cur, ast.Attribute):
                 parts.append(cur.attr)
@@ -91,9 +91,9 @@ def _format_classes_summary(code_text: str) -> str:
             return ".".join(parts)
         return ast.dump(node, include_attributes=False)
 
-    class_lines: List[str] = ["## 🧩 Fusion Module Summary"]
-    classes: List[ast.ClassDef] = [n for n in tree.body if isinstance(n, ast.ClassDef)]
-    functions: List[ast.FunctionDef] = [
+    class_lines: list[str] = ["## 🧩 Fusion Module Summary"]
+    classes: list[ast.ClassDef] = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+    functions: list[ast.FunctionDef] = [
         n for n in tree.body if isinstance(n, ast.FunctionDef)
     ]
 
@@ -665,7 +665,7 @@ class FuserAgentUI:
         run_timeout: int,
         enable_reasoning: bool,
         user_api_key: str | None,
-    ) -> Tuple[str, str, str, str, str | None]:
+    ) -> tuple[str, str, str, str, str | None]:
         problem_path = custom_problem.strip() or selected_problem
         artifacts = run_fuser_problem(
             problem_path=problem_path,
