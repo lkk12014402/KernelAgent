@@ -66,15 +66,23 @@ class TritonKernelAgent:
 
         # Initialize provider
         self.provider = None
+        '''
         try:
-            self.provider = get_model_provider(self.model_name, preferred_provider)
-            self.logger = logging.getLogger(self.__class__.__name__)
-            self.logger.info(
+            """
+            print(
                 f"Initialized provider '{self.provider.name}' for model '{self.model_name}'"
             )
+            """
+            print(self.model_name)
+            print(preferred_provider)
+            self.provider = get_model_provider(self.model_name, preferred_provider)
+            self.logger = logging.getLogger(self.__class__.__name__)
         except ValueError as e:
             # Will be handled in setup_logging, just store the error for now
             self._provider_error = str(e)
+        '''
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.provider = get_model_provider(self.model_name, preferred_provider)
 
         # Setup logging
         if log_dir:

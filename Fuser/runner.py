@@ -271,6 +271,7 @@ def run_candidate(
         )
     )
 
+    # print(f"====stdout_path: {stdout_path}")
     # Read bounded scan for classification
     out_text, scan_truncated = _read_all_text_bounded(stdout_path, MAX_SCAN_BYTES)
 

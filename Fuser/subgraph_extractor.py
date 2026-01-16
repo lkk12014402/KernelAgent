@@ -263,7 +263,8 @@ def extract_subgraphs_to_json(
     Uses EventAdapter for OpenAI, otherwise Provider inferface
     """
     provider = get_model_provider(model_name)
-    if provider.name != "openai":
+    #if provider.name != "openai":
+    if True:
         messages: list[dict[str, str]] = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -290,7 +291,9 @@ def extract_subgraphs_to_json(
         )
         output_text = result.get("output_text", "")
 
+    # print(f"=======================output_text: {output_text}")
     raw_json = _extract_json_block(output_text)
+    # print(f"=======================raw_json: {raw_json}")
     try:
         data = json.loads(raw_json)
     except Exception as e:

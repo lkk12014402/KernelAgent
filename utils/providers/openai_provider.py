@@ -21,7 +21,7 @@ class OpenAIProvider(OpenAICompatibleProvider):
     """OpenAI API provider."""
 
     def __init__(self):
-        super().__init__(api_key_env="OPENAI_API_KEY")
+        super().__init__(api_key_env="OPENAI_API_KEY", base_url="OPENAI_API_BASE")
 
     @property
     def name(self) -> str:
@@ -34,4 +34,4 @@ class OpenAIProvider(OpenAICompatibleProvider):
         elif model_name.startswith("gpt-3.5"):
             return 16000
         else:
-            return 8192
+            return 32000

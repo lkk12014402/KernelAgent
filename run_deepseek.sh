@@ -1,0 +1,11 @@
+python -m Fuser.pipeline \
+  --problem ../KernelBench/KernelBench/level1/19_ReLU.py \
+  --extract-model DeepSeek-R1-G2-static-671B \
+  --dispatch-model DeepSeek-R1-G2-static-671B \
+  --dispatch-jobs auto \
+  --compose-model DeepSeek-R1-G2-static-671B \
+  --workers 4 \
+  --max-iters 5 \
+  --llm-timeout-s 3000 \
+  --run-timeout-s 600 \
+  --verify

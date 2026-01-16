@@ -43,13 +43,14 @@ class OpenAICompatibleProvider(BaseProvider):
             return
 
         api_key = self._get_api_key(self.api_key_env)
+        base_url = self._get_api_key(self.base_url)
         if api_key:
             # Configure proxy using centralized utility function
             self._original_proxy_env = configure_proxy_environment()
 
             # Initialize client (proxy configured via environment variables)
-            if self.base_url:
-                self.client = OpenAI(api_key=api_key, base_url=self.base_url)
+            if base_url:
+                self.client = OpenAI(api_key=api_key, base_url=base_url)
             else:
                 self.client = OpenAI(api_key=api_key)
 

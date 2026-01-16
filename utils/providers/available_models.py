@@ -23,6 +23,16 @@ from utils.providers.relay_provider import RelayProvider
 # Registry of all available models (external/OSS version)
 AVAILABLE_MODELS = [
     ModelConfig(
+        name="DeepSeek-R1-G2-static-671B",
+        provider_classes=[OpenAIProvider],
+        description="DeepSeek-R1-G2-static-671B - fast reasoning model",
+    ),
+    ModelConfig(
+        name="glm-4.6-fp8",
+        provider_classes=[OpenAIProvider],
+        description="glm-4.6-fp8 - fast reasoning model",
+    ),
+    ModelConfig(
         name="o4-mini",
         provider_classes=[OpenAIProvider],
         description="OpenAI o4-mini - fast reasoning model",

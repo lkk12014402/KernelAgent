@@ -87,6 +87,7 @@ def run_pipeline(
         target_platform=target_platform,
     )
 
+    print(f"# Step 2: dispatch to KernelAgent ")
     # Step 2: dispatch to KernelAgent
     out_dir = Path(run_dir) / "kernels_out"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +105,7 @@ def run_pipeline(
             jobs_val = max(1, int(dispatch_jobs))
         except Exception:
             jobs_val = 1
+    print(f"==================dispatch_run, jobs_val: {jobs_val}")
 
     summary_path = dispatch_run(
         subgraphs_path=Path(subgraphs_path),
