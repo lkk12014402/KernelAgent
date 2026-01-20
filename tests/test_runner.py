@@ -14,31 +14,23 @@
 
 import os
 import pytest
+from unittest.mock import patch
 
 
 def test_allowlist_env_preserves_ld_library_path():
     """Test that LD_LIBRARY_PATH is preserved in the allowlist."""
     from Fuser.runner import _allowlist_env
     
-    # Save original environment
-    original_env = os.environ.copy()
+    # Set a test LD_LIBRARY_PATH
+    test_path = "/usr/local/lib:/opt/intel/lib"
     
-    try:
-        # Set a test LD_LIBRARY_PATH
-        test_path = "/usr/local/lib:/opt/intel/lib"
-        os.environ["LD_LIBRARY_PATH"] = test_path
-        
+    with patch.dict(os.environ, {"LD_LIBRARY_PATH": test_path}):
         # Get the allowlisted environment
         allowed_env = _allowlist_env()
         
         # Verify LD_LIBRARY_PATH is preserved
         assert "LD_LIBRARY_PATH" in allowed_env
         assert allowed_env["LD_LIBRARY_PATH"] == test_path
-        
-    finally:
-        # Restore original environment
-        os.environ.clear()
-        os.environ.update(original_env)
 
 
 def test_allowlist_env_preserves_path():
@@ -57,20 +49,12 @@ def test_allowlist_env_without_ld_library_path():
     """Test that _allowlist_env works when LD_LIBRARY_PATH is not set."""
     from Fuser.runner import _allowlist_env
     
-    # Save original environment
-    original_env = os.environ.copy()
+    # Create a copy of the environment without LD_LIBRARY_PATH
+    env_without_ld = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
     
-    try:
-        # Remove LD_LIBRARY_PATH if it exists
-        os.environ.pop("LD_LIBRARY_PATH", None)
-        
+    with patch.dict(os.environ, env_without_ld, clear=True):
         # Get the allowlisted environment
         allowed_env = _allowlist_env()
         
         # Verify LD_LIBRARY_PATH is not in the result when not set
         assert "LD_LIBRARY_PATH" not in allowed_env
-        
-    finally:
-        # Restore original environment
-        os.environ.clear()
-        os.environ.update(original_env)
