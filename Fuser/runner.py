@@ -89,6 +89,8 @@ def _allowlist_env() -> dict[str, str]:
                     continue
             if keep:
                 allow["PYTHONPATH"] = os.pathsep.join(keep)
+        elif k == "LD_LIBRARY_PATH":
+            allow[k] = v
         elif k.startswith("LANG") or k.startswith("LC_"):
             allow[k] = v
     # Determinism and small resource caps
