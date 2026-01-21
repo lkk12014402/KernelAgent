@@ -91,6 +91,15 @@ def _allowlist_env() -> dict[str, str]:
                 allow["PYTHONPATH"] = os.pathsep.join(keep)
         elif k.startswith("LANG") or k.startswith("LC_"):
             allow[k] = v
+
+        # oneAPI / Intel 相关环境变量
+        else:
+            # 精确匹配前几个
+            if k in ("LD_LIBRARY_PATH", "LIBRARY_PATH", "CPATH", "MKLROOT"):
+                allow[k] = v
+            # 匹配 ONEAPI_* / INTEL_* 等前缀
+            elif k.startswith("ONEAPI_") or k.startswith("INTEL_"):
+                allow[k] = v
     # Determinism and small resource caps
     allow["PYTHONHASHSEED"] = "0"
     allow.setdefault("OMP_NUM_THREADS", "1")
@@ -123,6 +132,7 @@ def _run_candidate(
     """Run candidate with subprocess."""
     f_out = stdout_path.open("wb")
     f_err = stderr_path.open("wb")
+
     try:
         p = subprocess.Popen(
             argv,

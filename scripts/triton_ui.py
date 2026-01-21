@@ -156,6 +156,14 @@ class TritonKernelUI:
                 original_env_key = os.environ.get(key_env_var)
                 os.environ[key_env_var] = api_key
 
+            print(f"key_env_var: {key_env_var}")
+            print(f"api_key: {api_key}")
+            os.environ[key_env_var] = ""
+
+            target_platform = "xpu"
+            print(f"target_platform: {target_platform}")
+            print(f"get_platform(target_platform): {get_platform(target_platform)}")
+
             agent = TritonKernelAgent(
                 model_name=model_name,
                 high_reasoning_effort=high_reasoning_effort,
@@ -735,8 +743,11 @@ def main():
         print(f"🌐 Opening on Meta devserver: https://{server_name}:{args.port}/")
         print("💡 Make sure you're connected to Meta VPN to access the demo")
 
+        # server_name = "h3c.sh.intel.com"
+
         app.launch(
-            share=False,
+            # share=False,
+            share=True,
             show_error=True,
             server_name=server_name,
             server_port=args.port,
@@ -753,11 +764,13 @@ def main():
         )
 
         app.launch(
-            share=False,
+            # share=False,
+            share=True,
             show_error=True,
-            server_name=args.host,
-            server_port=args.port,
-            inbrowser=True,  # Auto-open browser for local development
+            # server_name=args.host,
+            server_name="0.0.0.0",
+            # server_port=args.port,
+            # inbrowser=True,  # Auto-open browser for local development
         )
 
 

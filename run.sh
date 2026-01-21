@@ -1,10 +1,11 @@
 python -m Fuser.pipeline \
   --problem ../KernelBench/KernelBench/level1/19_ReLU.py \
+  --target-platform xpu \
   --extract-model glm-4.6-fp8 \
   --dispatch-model glm-4.6-fp8 \
   --dispatch-jobs auto \
   --compose-model glm-4.6-fp8 \
-  --workers 4 \
+  --workers 1 \
   --max-iters 5 \
   --llm-timeout-s 3000 \
   --run-timeout-s 600 \

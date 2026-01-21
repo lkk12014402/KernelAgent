@@ -1,5 +1,6 @@
 python -m Fuser.pipeline \
   --problem ../KernelBench/KernelBench/level1/19_ReLU.py \
+  --target-platform xpu \
   --extract-model DeepSeek-R1-G2-static-671B \
   --dispatch-model DeepSeek-R1-G2-static-671B \
   --dispatch-jobs auto \

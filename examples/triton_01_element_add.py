@@ -30,7 +30,7 @@ def main():
     load_dotenv()
 
     # Create agent
-    agent = TritonKernelAgent()
+    agent = TritonKernelAgent(model_name="glm-4.6-fp8", target_platform="xpu")
 
     print("=" * 80)
     print("Element-wise Addition Kernel Generation")
