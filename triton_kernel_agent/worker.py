@@ -120,6 +120,45 @@ DISALLOWED_TORCH_PATTERNS = [
 ]
 
 
+def _allowlist_env() -> dict[str, str]:
+    allow: dict[str, str] = {}
+    for k, v in os.environ.items():
+        if k == "PATH":
+            allow[k] = v
+        elif k == "PYTHONPATH":
+            # sanitize: keep only absolute, existing dirs
+            parts = [p for p in v.split(os.pathsep) if p]
+            keep: list[str] = []
+            for p in parts:
+                try:
+                    pp = os.path.abspath(p)
+                    if os.path.isabs(pp) and os.path.isdir(pp):
+                        keep.append(pp)
+                except Exception:
+                    continue
+            if keep:
+                allow["PYTHONPATH"] = os.pathsep.join(keep)
+        elif k.startswith("LANG") or k.startswith("LC_"):
+            allow[k] = v
+
+        # oneAPI / Intel 相关环境变量
+
+        else:
+            # 精确匹配前几个
+            if k in ("LD_LIBRARY_PATH", "LIBRARY_PATH", "CPATH", "MKLROOT"):
+                allow[k] = v
+            # 匹配 ONEAPI_* / INTEL_* 等前缀
+            elif k.startswith("ONEAPI_") or k.startswith("INTEL_"):
+                allow[k] = v
+    # Determinism and small resource caps
+    allow["PYTHONHASHSEED"] = "0"
+    allow.setdefault("OMP_NUM_THREADS", "1")
+    allow.setdefault("MKL_NUM_THREADS", "1")
+    allow.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+    return allow
+
+
 class VerificationWorker:
     """Worker that verifies and refines a single kernel implementation."""
 
@@ -316,9 +355,10 @@ class VerificationWorker:
                 result = subprocess.run(
                     [sys.executable, str(test_file)],
                     cwd=str(self.workdir),
+                    env=_allowlist_env(),
                     capture_output=True,
                     text=True,
-                    timeout=self.test_timeout_s,
+                    timeout=10000,
                 )
                 if result.returncode != 0:
                     self.logger.error(

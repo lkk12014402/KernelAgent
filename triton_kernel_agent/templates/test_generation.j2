@@ -79,7 +79,17 @@ CRITICAL TEST DATA REQUIREMENTS:
 - AVOID FP32 for inputs and outputs - use BF16 instead when users specify FP32 problems
   - EXCEPTION: If the user cast example inputs explicitly to FP32, test with both FP32 and BF16
 - GroupNorm: compute mean/var in fp32 over (C/G)*H*W per (N,group), eps=1e-5; apply affine in fp32, cast at end; no extra bf16 quantization before pool/norm.
-
+{% if device_string == "xpu" %}
+- XPU SPECIFIC: ALWAYS OVERRIDE problem description shapes with XPU-safe sizes
+- XPU SPECIFIC: Max total elements: 50,000,000 (50M) - NEVER exceed this regardless of problem description
+- XPU SPECIFIC: For ANY 2D tensor [M, N], ensure M * N <= 50,000,000
+- XPU SPECIFIC: Examples of safe sizes: [4096, 4096] = 16.7M, [2048, 20488] = 41M, [1024, 49152] = 50M
+- XPU SPECIFIC: If problem requires larger shapes, reduce to fit within 50M elements and add comment explaining the reduction
+- XPU SPECIFIC: BLOCK_SIZE must be small: 64, 128, or 256 ONLY. NEVER use 512, 1024, 2048, 4096, 8192, 16384, 32768!
+- XPU SPECIFIC: BLOCK_SIZE_M and BLOCK_SIZE_N must be <= 256 each. NEVER use 512 or larger!
+- XPU SPECIFIC: BLOCK_SIZE_K must be <= 256.
+- XPU SPECIFIC: Large BLOCK_SIZE (>512) causes UR_RESULT_ERROR_OUT_OF_RESOURCES due to excessive shared memory/registers per block
+{% endif %}
 
 DEBUGGING REQUIREMENTS:
 - When numerical results are incorrect, print detailed debugging information including:

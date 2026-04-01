@@ -33,7 +33,7 @@ class OpenAICompatibleProvider(BaseProvider):
 
     def __init__(self, api_key_env: str, base_url: str | None = None):
         self.api_key_env = api_key_env
-        self.base_url = base_url
+        self.base_url = "http://10.239.15.43/v1"
         self._original_proxy_env = None
         super().__init__()
 
@@ -43,6 +43,7 @@ class OpenAICompatibleProvider(BaseProvider):
             return
 
         api_key = self._get_api_key(self.api_key_env)
+        print("self.base_url: ", self.base_url)
         if api_key:
             # Configure proxy using centralized utility function
             self._original_proxy_env = configure_proxy_environment()
@@ -135,6 +136,8 @@ class OpenAICompatibleProvider(BaseProvider):
             ("o3", "o1")
         ):
             params["reasoning_effort"] = "high"
+
+        params["reasoning_effort"] = "high"
 
         return params
 

@@ -77,6 +77,7 @@ def run_pipeline(
         else:
             dispatch_model = "o4-mini"
 
+    print("==========================================================Step 1: extract")
     # Step 1: extract
     run_dir, subgraphs_path = extract_subgraphs_to_json(
         problem_path=problem_path,
@@ -88,6 +89,8 @@ def run_pipeline(
         target_platform=target_platform,
     )
 
+
+    print("================================================================Step 2: dispatch to KernelAgent")
     # Step 2: dispatch to KernelAgent
     out_dir = Path(run_dir) / "kernels_out"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -116,6 +119,8 @@ def run_pipeline(
         test_timeout_s=test_timeout_s,
     )
 
+
+    print("=====================================================================Step 3: compose end-to-end")
     # Step 3: compose end-to-end
     compose_out = Path(run_dir) / "compose_out"
     compose_out.mkdir(parents=True, exist_ok=True)

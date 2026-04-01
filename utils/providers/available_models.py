@@ -23,6 +23,31 @@ from utils.providers.relay_provider import RelayProvider
 # Registry of all available models (external/OSS version)
 AVAILABLE_MODELS = [
     ModelConfig(
+        name="/mnt/disk6/DeepSeek-R1-BF16-w8afp8-static-no-ste-G2",
+        provider_classes=[OpenAIProvider],
+        description="DeepSeek-R1-G2-static-671B - fast reasoning model",
+    ),
+    ModelConfig(
+        name="./DeepSeek-R1-BF16-w8afp8-static-no-ste-G2",
+        provider_classes=[OpenAIProvider],
+        description="DeepSeek-R1-G2-static-671B - fast reasoning model",
+    ),
+    ModelConfig(
+        name="DeepSeek-R1-G2-static-671B",
+        provider_classes=[OpenAIProvider],
+        description="DeepSeek-R1-G2-static-671B - fast reasoning model",
+    ),
+    ModelConfig(
+        name="glm-4.7-fp8",
+        provider_classes=[OpenAIProvider],
+        description="glm-4.6-fp8 - fast reasoning model",
+    ),
+    ModelConfig(
+        name="minimax-m2.5",
+        provider_classes=[OpenAIProvider],
+        description="glm-4.6-fp8 - fast reasoning model",
+    ),
+    ModelConfig(
         name="o4-mini",
         provider_classes=[OpenAIProvider],
         description="OpenAI o4-mini - fast reasoning model",
@@ -37,6 +62,16 @@ AVAILABLE_MODELS = [
         name="gpt-5.2",
         provider_classes=[OpenAIProvider],
         description="GPT-5.2 flagship model (Released Dec 2025)",
+    ),
+    ModelConfig(
+        name="anthropic/MiniMax-M2.5",
+        provider_classes=[AnthropicProvider],
+        description="Claude 4.6 Opus - most intelligent (Released Feb 2026)",
+    ),
+    ModelConfig(
+        name="MiniMaxAI/MiniMax-M2.5",
+        provider_classes=[AnthropicProvider],
+        description="Claude 4.6 Opus - most intelligent (Released Feb 2026)",
     ),
     # Anthropic Claude 4 Models (Latest)
     ModelConfig(

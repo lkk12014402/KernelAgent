@@ -58,6 +58,15 @@ CRITICAL REQUIREMENTS - NO CHEATING ALLOWED:
 {% if no_cusolver %}
 - DO NOT rely on cuSolver libraries (torch.linalg.svd, torch.linalg.eigh, etc.) to satisfy the requirements
 {% endif %}
+{% if device_string == "xpu" %}
+- CRITICAL XPU CONSTRAINT: BLOCK_SIZE must be small: 64, 128, or 256 ONLY. NEVER use 512, 1024, 2048, 4096, 8192, 16384, 32768, or larger!
+- CRITICAL XPU CONSTRAINT: BLOCK_SIZE_M and BLOCK_SIZE_N must be <= 256 each (e.g., 64x64, 128x128, 128x256). NEVER use 512 or larger!
+- CRITICAL XPU CONSTRAINT: BLOCK_SIZE_K must be <= 256. Keep it small to reduce shared memory usage.
+- CRITICAL XPU CONSTRAINT: Large BLOCK_SIZE (e.g., >512) causes UR_RESULT_ERROR_OUT_OF_RESOURCES due to excessive shared memory/registers per block.
+- CRITICAL XPU CONSTRAINT: Test input tensor shapes must be reduced to fit XPU limits: total elements <= 50M
+- CRITICAL XPU CONSTRAINT: With small BLOCK_SIZE (128/256), grid size is acceptable even for 50M elements (~200K-400K blocks).
+- CRITICAL XPU CONSTRAINT: For input shape [M, N], ensure M * N <= 50,000,000. Example: [4096, 4096] = 16.7M is safe.
+{% endif %}
 
 **WHAT IS REQUIRED:**
 - Write actual Triton kernel code using triton.language operations

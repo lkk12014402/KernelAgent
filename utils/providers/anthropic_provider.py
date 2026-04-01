@@ -26,6 +26,9 @@ except ImportError:
     Anthropic = None
 
 
+print(ANTHROPIC_AVAILABLE)
+
+
 class AnthropicProvider(BaseProvider):
     """Anthropic API provider."""
 
@@ -35,12 +38,13 @@ class AnthropicProvider(BaseProvider):
 
     def _initialize_client(self) -> None:
         api_key = self._get_api_key("ANTHROPIC_API_KEY")
-        if ANTHROPIC_AVAILABLE and api_key:
+        # if ANTHROPIC_AVAILABLE and api_key:
+        if True:
             # Configure proxy using centralized utility function
             self._original_proxy_env = configure_proxy_environment()
 
             # Initialize client (proxy configured via environment variables)
-            self.client = Anthropic(api_key=api_key)
+            self.client = Anthropic(api_key="sk-cp-LKAgYVTb1A-TrGbTtRar7C9HnFtfFxlNdVSTXk2rO9_aBzS5c1JMcZoRCxTmfnP2SHUGQUu3t7G38iIBaswe1p6eV_7hOOZy6KfZ2tVXSCbf2_", base_url="https://api.minimax.io/anthropic")
 
     def get_response(
         self, model_name: str, messages: list[dict[str, str]], **kwargs
@@ -58,8 +62,9 @@ class AnthropicProvider(BaseProvider):
             messages=[{"role": "user", "content": user_content}],
         )
 
+
         return LLMResponse(
-            content=response.content[0].text, model=model_name, provider=self.name
+            content=response.content[1].text, model=model_name, provider=self.name
         )
 
     def get_multiple_responses(

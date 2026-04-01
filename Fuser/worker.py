@@ -126,7 +126,10 @@ class Worker:
             Uses EventAdapter for OpenAI otherwise Provider inferface
             """
             provider = get_model_provider(self.cfg.model)
-            if provider.name != "openai":
+            print("======================Worker provider: ", provider)
+            # if provider.name != "openai":
+            if True:
+            # if False:
                 # Call LLM directly using provider
                 messages: list[dict[str, str]] = [
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -148,11 +151,16 @@ class Worker:
                         "response_id": None,
                         "error": error,
                     }
+
+                print(result)
+
+
             else:
                 # Stream via EventAdapter
                 jsonl_path = self.dirs["responses"] / f"iteration_{k}.stream.jsonl"
                 adapter = EventAdapter(
                     model=self.cfg.model,
+                    client=provider.client,
                     store_responses=self.cfg.store_responses,
                     timeout_s=self.cfg.llm_timeout_s,
                     jsonl_path=jsonl_path,

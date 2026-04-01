@@ -239,6 +239,8 @@ def extract_subgraphs_to_json(
     base_dir.mkdir(exist_ok=True)
     dirs = make_run_dirs(base_dir, run_id)
 
+    print("============================================================================extract_subgraphs_to_json")
+
     orch = Orchestrator(
         cfg,
         run_dir=dirs["run_dir"],
@@ -263,7 +265,8 @@ def extract_subgraphs_to_json(
     Uses EventAdapter for OpenAI, otherwise Provider inferface
     """
     provider = get_model_provider(model_name)
-    if provider.name != "openai":
+    # if provider.name != "openai":
+    if True:
         messages: list[dict[str, str]] = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -297,6 +300,8 @@ def extract_subgraphs_to_json(
         # Write diagnostic and re-raise
         diag = dirs["orchestrator"] / "subgraphs.raw.txt"
         diag.write_text(output_text, encoding="utf-8")
+        print("raw_json: ", raw_json)
+        print("output_text: ", output_text)
         raise SystemExit(f"Failed to parse LLM JSON: {e}")
 
     if not isinstance(data, list):

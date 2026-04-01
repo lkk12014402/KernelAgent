@@ -154,6 +154,8 @@ class EventAdapter:
         if self.store_responses:
             params["store"] = True
 
+        print(client)
+
         try:
             with client.responses.stream(**params) as stream:  # type: ignore[attr-defined]
                 for event in stream:
@@ -215,6 +217,7 @@ class EventAdapter:
                     self._append_event(StreamDelta(time.time(), kind, data))
         except Exception as e:
             error_msg = f"stream_error: {e.__class__.__name__}: {e}"
+            print(error_msg)
             self._append_event(
                 StreamDelta(time.time(), "exception", {"message": error_msg})
             )
