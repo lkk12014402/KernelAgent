@@ -57,6 +57,7 @@ def run_pipeline(
     verify: bool = True,
     compose_max_iters: int = 5,
     target_platform: str = "cuda",
+    test_timeout_s: int = 30,
 ) -> dict:
     # Select default KernelAgent model if not provided: prefer GPT-5 for Level 2/3
     if dispatch_model is None:
@@ -87,7 +88,6 @@ def run_pipeline(
         target_platform=target_platform,
     )
 
-    print(f"# Step 2: dispatch to KernelAgent ")
     # Step 2: dispatch to KernelAgent
     out_dir = Path(run_dir) / "kernels_out"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -105,7 +105,6 @@ def run_pipeline(
             jobs_val = max(1, int(dispatch_jobs))
         except Exception:
             jobs_val = 1
-    print(f"==================dispatch_run, jobs_val: {jobs_val}")
 
     summary_path = dispatch_run(
         subgraphs_path=Path(subgraphs_path),
@@ -114,6 +113,7 @@ def run_pipeline(
         jobs=jobs_val,
         target_platform=target_platform,
         max_iters=max_iters,
+        test_timeout_s=test_timeout_s,
     )
 
     # Step 3: compose end-to-end
@@ -175,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=get_platform_choices(),
         help="Target platform",
     )
+    p.add_argument("--test-timeout-s", type=int, default=30)
     args = p.parse_args(argv)
 
     problem_path = Path(args.problem).resolve()
@@ -197,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             verify=args.verify,
             compose_max_iters=args.compose_max_iters,
             target_platform=args.target_platform,
+            test_timeout_s=args.run_timeout_s,
         )
         print(json.dumps(res, indent=2))
         return 0

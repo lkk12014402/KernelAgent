@@ -23,16 +23,6 @@ from utils.providers.relay_provider import RelayProvider
 # Registry of all available models (external/OSS version)
 AVAILABLE_MODELS = [
     ModelConfig(
-        name="DeepSeek-R1-G2-static-671B",
-        provider_classes=[OpenAIProvider],
-        description="DeepSeek-R1-G2-static-671B - fast reasoning model",
-    ),
-    ModelConfig(
-        name="glm-4.6-fp8",
-        provider_classes=[OpenAIProvider],
-        description="glm-4.6-fp8 - fast reasoning model",
-    ),
-    ModelConfig(
         name="o4-mini",
         provider_classes=[OpenAIProvider],
         description="OpenAI o4-mini - fast reasoning model",
@@ -43,7 +33,22 @@ AVAILABLE_MODELS = [
         provider_classes=[RelayProvider, OpenAIProvider],
         description="GPT-5 flagship model (Released Aug 2025)",
     ),
+    ModelConfig(
+        name="gpt-5.2",
+        provider_classes=[OpenAIProvider],
+        description="GPT-5.2 flagship model (Released Dec 2025)",
+    ),
     # Anthropic Claude 4 Models (Latest)
+    ModelConfig(
+        name="claude-opus-4-6",
+        provider_classes=[AnthropicProvider],
+        description="Claude 4.6 Opus - most intelligent (Released Feb 2026)",
+    ),
+    ModelConfig(
+        name="claude-sonnet-4-6",
+        provider_classes=[AnthropicProvider],
+        description="Claude 4.6 Sonnet - fast and powerful (Released Feb 2026)",
+    ),
     ModelConfig(
         name="claude-opus-4-1-20250805",
         provider_classes=[AnthropicProvider],
@@ -63,5 +68,15 @@ AVAILABLE_MODELS = [
         name="gcp-claude-4-sonnet",
         provider_classes=[RelayProvider],
         description="[Relay] Claude 4 Sonnet",
+    ),
+    ModelConfig(
+        name="claude-opus-4.5",
+        provider_classes=[RelayProvider],
+        description="Claude 4.5 Opus (Released Nov 2025)",
+    ),
+    ModelConfig(
+        name="gpt-5-2",
+        provider_classes=[RelayProvider],
+        description="GPT-5.2 flagship model (Dec 2025) - Note the name is different from the OpenAI model",
     ),
 ]

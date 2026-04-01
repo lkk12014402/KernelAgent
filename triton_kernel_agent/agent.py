@@ -27,6 +27,7 @@ from .manager import WorkerManager
 from .prompt_manager import PromptManager
 from utils.providers import BaseProvider, get_model_provider
 from triton_kernel_agent.platform_config import PlatformConfig, get_platform
+from triton_kernel_agent.worker_util import format_test_code_for_llm
 
 
 class TritonKernelAgent:
@@ -41,6 +42,8 @@ class TritonKernelAgent:
         high_reasoning_effort: bool = True,
         preferred_provider: BaseProvider | None = None,
         target_platform: PlatformConfig | None = None,
+        no_cusolver: bool = False,
+        test_timeout_s: int = 30,
     ):
         """
         Initialize the Triton Kernel Agent.
@@ -52,6 +55,7 @@ class TritonKernelAgent:
             model_name: OpenAI model to use (loaded from .env if None)
             high_reasoning_effort: Whether to use high reasoning effort for OpenAI models
             target_platform: Target platform PlatformConfig
+            no_cusolver: If True, disables cuSolver library usage
         """
         # Load environment variables
         load_dotenv()
@@ -66,23 +70,15 @@ class TritonKernelAgent:
 
         # Initialize provider
         self.provider = None
-        '''
         try:
-            """
-            print(
-                f"Initialized provider '{self.provider.name}' for model '{self.model_name}'"
-            )
-            """
-            print(self.model_name)
-            print(preferred_provider)
             self.provider = get_model_provider(self.model_name, preferred_provider)
             self.logger = logging.getLogger(self.__class__.__name__)
+            self.logger.info(
+                f"Initialized provider '{self.provider.name}' for model '{self.model_name}'"
+            )
         except ValueError as e:
             # Will be handled in setup_logging, just store the error for now
             self._provider_error = str(e)
-        '''
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.provider = get_model_provider(self.model_name, preferred_provider)
 
         # Setup logging
         if log_dir:
@@ -95,6 +91,8 @@ class TritonKernelAgent:
         self._platform_config = (
             target_platform if target_platform else get_platform("cuda")
         )
+        self.no_cusolver = no_cusolver
+        self.test_timeout_s = test_timeout_s
 
         # Setup main logger
         self._setup_logging()
@@ -111,6 +109,8 @@ class TritonKernelAgent:
             openai_model=self.model_name,
             high_reasoning_effort=self.high_reasoning_effort,
             target_platform=self._platform_config.name,
+            no_cusolver=self.no_cusolver,
+            test_timeout_s=self.test_timeout_s,
         )
 
     def _setup_logging(self):
@@ -127,7 +127,10 @@ class TritonKernelAgent:
         self.logger = logging.getLogger("TritonKernelAgent")
 
     def _extract_code_from_response(
-        self, response_text: str, language: str = "python"
+        self,
+        response_text: str,
+        language: str = "python",
+        prefer_kernel_function: bool = False,
     ) -> str | None:
         """
         Extract code from LLM response text.
@@ -135,6 +138,11 @@ class TritonKernelAgent:
         Args:
             response_text: The full LLM response text
             language: The expected language (default: python)
+            prefer_kernel_function: When True and multiple code blocks are
+                found, prefer the block that defines ``kernel_function``
+                (falling back to the longest block).  Use this when the
+                prompt contains additional test code that the LLM may echo
+                back.
 
         Returns:
             Extracted code or None if no valid code block found
@@ -147,16 +155,21 @@ class TritonKernelAgent:
         pattern = rf"```{language}\s*\n(.*?)```"
         matches = re.findall(pattern, response_text, re.DOTALL)
 
-        if matches:
-            # Return the first match (largest code block)
-            return matches[0].strip()
-
-        # Try generic code blocks without language marker
-        pattern = r"```\s*\n(.*?)```"
-        matches = re.findall(pattern, response_text, re.DOTALL)
+        if not matches:
+            # Try generic code blocks without language marker
+            pattern = r"```\s*\n(.*?)```"
+            matches = re.findall(pattern, response_text, re.DOTALL)
 
         if matches:
-            # Return the first match
+            if prefer_kernel_function and len(matches) > 1:
+                # When additional tests are in the prompt the LLM may echo
+                # wrapper code.  Prefer the block defining kernel_function.
+                for block in matches:
+                    if re.search(r"\bdef\s+kernel_function\b", block):
+                        return block.strip()
+                # Fallback: return the longest block
+                return max(matches, key=len).strip()
+            # Default: return the first match
             return matches[0].strip()
 
         # If no code blocks found, check if the entire response looks like code
@@ -347,7 +360,9 @@ if __name__ == "__main__":
 
                 # Create prompt with Triton guidelines using template
                 prompt = self.prompt_manager.render_kernel_generation_prompt(
-                    problem_description=problem_description, test_code=test_code
+                    problem_description=problem_description,
+                    test_code=test_code,
+                    no_cusolver=self.no_cusolver,
                 )
 
                 kernels = []
@@ -368,7 +383,10 @@ if __name__ == "__main__":
                     )
 
                     for i, response in enumerate(responses):
-                        kernel_code = self._extract_code_from_response(response.content)
+                        kernel_code = self._extract_code_from_response(
+                            response.content,
+                            prefer_kernel_function=self._has_multiple_tests,
+                        )
                         if kernel_code:
                             kernels.append(kernel_code)
                         else:
@@ -383,7 +401,10 @@ if __name__ == "__main__":
                             max_tokens=max_completion_tokens,
                             temperature=0.8 + (i * 0.1),
                         )
-                        kernel_code = self._extract_code_from_response(response_text)
+                        kernel_code = self._extract_code_from_response(
+                            response_text,
+                            prefer_kernel_function=self._has_multiple_tests,
+                        )
 
                         if kernel_code:
                             kernels.append(kernel_code)
@@ -439,18 +460,24 @@ def kernel_function(*args, **kwargs):
         return kernels
 
     def generate_kernel(
-        self, problem_description: str, test_code: str | None = None
+        self,
+        problem_description: str,
+        test_code: str | None = None,
+        generate_default_test: bool = True,
     ) -> dict[str, Any]:
         """
         Generate an optimized Triton kernel for the given problem.
 
         Args:
             problem_description: Description of the kernel to generate
-            test_code: Optional test code (generated if not provided)
-                      The test code should:
+            test_code: Optional additional test code string.
+                      Each test should:
                       1. Import the kernel function: from kernel import kernel_function
                       2. Test the kernel and return True/False
                       3. Exit with code 0 on success, 1 on failure
+            generate_default_test: If True (default), auto-generate a primary
+                      test using the LLM. The generated test runs before any
+                      provided ``test_code``.
 
         Returns:
             Dictionary with results including successful kernel
@@ -459,14 +486,20 @@ def kernel_function(*args, **kwargs):
         self.logger.info("Starting kernel generation")
         self.logger.info(f"Problem: {problem_description[:100]}...")
 
-        # Always generate test code using LLM (even if test is provided as reference)
-        generated_test_code = self._generate_test(problem_description, test_code)
-        self.logger.info(
-            "Generated test code using LLM" + (" with reference" if test_code else "")
-        )
-
-        # Use the generated test code in standardized format
-        test_code = generated_test_code
+        # Normalize test_code to list[str]
+        test_code_list: list[str] = []
+        if generate_default_test:
+            generated = self._generate_test(problem_description, None)
+            self.logger.info("Generated default test code using LLM")
+            test_code_list.append(generated)
+        if test_code is not None:
+            self.logger.info("Appending provided test code")
+            test_code_list.append(test_code)
+        if not test_code_list:
+            raise ValueError(
+                "No test code: provide test_code or set generate_default_test=True"
+            )
+        self._has_multiple_tests = len(test_code_list) > 1
 
         # Log inputs
         import time
@@ -481,11 +514,14 @@ def kernel_function(*args, **kwargs):
 
         with open(session_dir / "problem.txt", "w") as f:
             f.write(problem_description)
-        with open(session_dir / "test.py", "w") as f:
-            f.write(test_code)
+        for i, test_code in enumerate(test_code_list):
+            with open(session_dir / f"test_{i}.py", "w") as f:
+                f.write(test_code)
 
-        # Generate kernel seeds
-        kernel_seeds = self._generate_kernel_seeds(problem_description, test_code)
+        # Generate kernel seeds (all tests as LLM context, with labels)
+        kernel_seeds = self._generate_kernel_seeds(
+            problem_description, format_test_code_for_llm(test_code_list)
+        )
 
         # Save seeds
         for i, kernel in enumerate(kernel_seeds):
@@ -495,7 +531,7 @@ def kernel_function(*args, **kwargs):
         # Run parallel verification with session directory for worker logs
         result = self.manager.run_verification(
             kernel_seeds=kernel_seeds,
-            test_code=test_code,
+            test_code=test_code_list,
             problem_description=problem_description,
             session_log_dir=session_dir,
         )

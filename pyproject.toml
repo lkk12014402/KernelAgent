@@ -32,6 +32,8 @@ dependencies = [
     "python-dotenv",
     "gradio>=5.5.0",
     "requests",
+    "numpy",
+    "omegaconf",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +46,7 @@ dev = [
 fuser-ui = "scripts.fuser_ui:main"
 kernel-agent = "scripts.triton_ui:main"
 list-models = "scripts.list_models:main"
+optimization-ui = "scripts.optimization_ui:main"
 pipeline-ui = "scripts.pipeline_ui:main"
 
 [project.urls]
@@ -52,7 +55,7 @@ pipeline-ui = "scripts.pipeline_ui:main"
 "Repository" = "https://github.com/pytorch-labs/KernelAgent"
 
 [tool.setuptools.packages.find]
-include = ["triton_kernel_agent*", "Fuser*", "scripts", "utils"]
+include = ["triton_kernel_agent*", "kernel_perf_agent*", "Fuser*", "scripts", "utils"]
 
 [tool.setuptools]
 include-package-data = true

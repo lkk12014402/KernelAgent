@@ -1,21 +1,27 @@
-# KernelAgent — Multi‑Agent GPU Kernel Synthesis
+# KernelAgent — Multi‑Agent GPU Kernel Synthesis and Optimization
 
-KernelAgent turns PyTorch programs into verified Triton kernels. It was designed around KernelBench workloads and combines:
+KernelAgent turns PyTorch programs into verified Triton kernels and optimize its performance. It was designed around KernelBench workloads and combines:
 
 - Static problem analysis to decide whether to run a lightweight path or a full pipeline
 - LLM‑assisted refactoring that isolates fusable subgraphs
 - Parallel Triton kernel generation with strict runtime verification
 - End‑to‑end composition that rebuilds the original forward pass using only the synthesized kernels
+- Hardware‑guided optimization pipeline that iteratively improves performance
 
-Blog post: [PyTorch KernelFalcon](https://pytorch.org/blog/kernelfalcon-autonomous-gpu-kernel-generation-via-deep-agents/)
+GPU Kernel Synthesis Blog post: [PyTorch KernelFalcon](https://pytorch.org/blog/kernelfalcon-autonomous-gpu-kernel-generation-via-deep-agents/)
 
-Additional docs: coming soon
+GPU Kernel Optimization Blog post: [PyTorch KernelAgent](https://pytorch.org/blog/kernelagent-hardware-guided-gpu-kernel-optimization-via-multi-agent-orchestration/)
 
-## Pipeline Overview
+## Kernel Generation Pipeline Overview
 
 ![](./assets/kernelagent2.excalidraw.svg)
 
 Every stage writes artifacts to a run directory under `.fuse/<run_id>/`, including the fused PyTorch code, `subgraphs.json`, individual KernelAgent sessions, and the final `compose_out/composed_kernel.py`.
+
+## KernelAgent Multi-Worker Optimization Pipeline Overview
+![](./assets/opt_agent.svg)
+Every stage writes artifacts to a run directory under `.optimize/<run_id>/`, including the input Triton kernel, artifacts, individual optimization worker sessions, and the final `output/best_kernel.py`.
+
 
 ## Quickstart
 
@@ -85,14 +91,16 @@ LLM_RELAY_TIMEOUT_S=120
 
 More knobs live in `triton_kernel_agent/agent.py` and `Fuser/config.py`.
 
-## End-to-End Workflows
+## End-to-End Kernel Generation Workflows
 
 - **Auto-route a KernelBench problem** — static analysis picks between the direct KernelAgent path and the full Fuser pipeline, with automatic fallback if the first attempt fails:
   ```bash
   python -m Fuser.auto_agent \
     --problem /abs/path/to/KernelBench/level1/19_ReLU.py \
-    --verify          # ensure final composition test runs
+    --no-router-cache \     # avoid caching or using cached results
+    --verify                # ensure final composition test runs
   ```
+  `--no-router-cache` can be enabled to avoid utilizing any cached router results and prevent writing to the cache.
 
 - **Manually run the pipeline (extract → dispatch → compose)** when you want explicit control over models or concurrency:
   ```bash
@@ -144,7 +152,7 @@ More knobs live in `triton_kernel_agent/agent.py` and `Fuser/config.py`.
 
 ## Component Details
 
-- **AutoRouter (`Fuser/auto_agent.py`)**: parses the problem’s AST, looks for attention blocks, transposed convolutions, control flow, and long op chains. It caches decisions under `.fuse/router_cache.json` and can fall back to the other path if the first attempt fails.
+- **AutoRouter (`Fuser/auto_agent.py`)**: parses the problem’s AST, looks for attention blocks, transposed convolutions, control flow, and long op chains. It caches decisions under `.fuse/router_cache.json` and can fall back to the other path if the first attempt fails. Use  `--no-router-cache` to ignore the existing cache and caching new routes. Use `--ignore-router-config` to ignore router-provided tuning and rely on CLI args.
 
 - **Fuser Orchestrator (`Fuser/orchestrator.py`)**: rewrites the PyTorch module into fusable modules, executes them for validation, and packages a tarball of the fused code. Run IDs and directories are managed via `Fuser/paths.py`.
 
@@ -155,6 +163,60 @@ More knobs live in `triton_kernel_agent/agent.py` and `Fuser/config.py`.
 - **TritonKernelAgent (`triton_kernel_agent/`)**: manages a pool of verification workers (`worker.py`, `manager.py`). Each worker iteratively asks an LLM for improvements, executes unit tests under sandboxed subprocesses (`Fuser/runner.py`), and enforces strict bans on PyTorch fallbacks. A run succeeds only when the test prints `PASS` (or the sentinel string) and exits with status 0.
 
 - **Composer (`Fuser/compose_end_to_end.py`)**: stitches the verified kernels back into a single Triton program. The composed file contains one or more `@triton.jit` kernels plus a `kernel_function(...)` wrapper and a self-test that replays the original PyTorch problem. With `--verify`, the test is executed immediately and must succeed.
+
+## End-to-End Kernel Optimization Workflows
+
+KernelAgent includes a hardware-guided optimization pipeline that iteratively improves a verified Triton kernel's performance using GPU profiling feedback.
+
+1. **Profile** — NCU collects 28 hardware metrics (compute utilization, memory bandwidth, cache hit rates, occupancy, stall breakdowns)
+2. **Roofline Analysis** — Classifies the kernel as memory-bound, compute-bound, or underutilized based on SOL (speed-of-light) percentages
+3. **Bottleneck Diagnosis** — An LLM analyzes the NCU metrics + kernel code to identify root causes and recommend specific fixes
+4. **Optimization** — An LLM generates an optimized kernel applying the recommended fixes
+5. **Verification** — The optimized kernel is tested for numerical correctness against PyTorch reference
+6. **Benchmarking** — CUDA event timing measures the new kernel, tracking best-so-far with divergence-based revert
+
+The loop runs for up to N rounds, with early termination when the kernel reaches roofline (≥95% SOL) or when performance converges.
+
+## Usage
+
+### Gradio UI
+
+```bash
+python scripts/optimization_ui.py --port 8085
+```
+
+
+### Programmatic API
+
+**Optimize a kernel using beam search** — parallel exploration with top-N kernels and M bottleneck directions:
+```bash
+cd examples && python run_opt_manager.py \
+  --kernel-dir optimize_01_matvec/ \
+  --strategy beam_search \
+  --max-rounds 5
+```
+
+### Key Components
+
+| Component | Location | Role |
+|---|---|---|
+| **OptimizationOrchestrator** | `triton_kernel_agent/opt_worker_component/orchestrator/` | Main optimization loop |
+| **KernelProfiler** | `triton_kernel_agent/opt_worker_component/profiling/` | NCU hardware profiling |
+| **BottleneckAnalyzer** | `triton_kernel_agent/opt_worker_component/prescribing/` | LLM-based bottleneck diagnosis |
+| **RooflineAnalyzer** | `kernel_perf_agent/kernel_opt/roofline/` | SOL classification and early stopping |
+| **Benchmark** | `triton_kernel_agent/opt_worker_component/benchmarking/` | CUDA event timing |
+
+### Optimization Artifacts
+
+```
+.optimize/workers/<worker_id>/<run_id>/artifacts
+  kernel_round_0.py          # baseline kernel
+  kernel_round_N.py          # kernel after round N
+  round001_opt_prompt.txt    # optimization prompt sent to LLM
+  round001_opt_reply.txt     # LLM response
+  round001_strategy.json     # bottleneck analysis result
+  ...
+```
 
 ## Platform Support
 
@@ -203,7 +265,7 @@ These artifacts are designed for reproducibility: you can re-run a single kernel
 
 ## Example Artifacts
 
-Looking for ready-to-browse outputs? See the curated artifacts repo:
+Looking for ready-to-browse **kernel generation** outputs? See the curated artifacts repo:
 
 - https://github.com/Laurawly/kernelagent-artifacts
 
@@ -213,9 +275,19 @@ It includes selected L1/L2/L3 problems with:
 - Composed end‑to‑end Triton programs and verification logs
 - Minimal examples for quick scanning
 
+Looking for ready-to-browse **kernel optimization** outputs? See the curated artifacts repo:
+- https://github.com/kaiming-cheng/kernelagent-optimization-artifacts
+
+
+It includes selected L1 problems with:
+- Initial Triton kernel (generated by earlier KernelAgent) fed into the optimization loop
+- Final optimized Triton kernel (output)
+- Per-round artifacts from the beam-search optimization
 ## Repository Layout
 
 - `triton_kernel_agent/` — KernelAgent core (agent, worker manager, provider adapters, prompt templates)
+- `triton_kernel_agent/opt_worker_component/` — optimization pipeline (profiler, benchmarker, bottleneck analyzer, orchestrator)
+- `kernel_perf_agent/kernel_opt` — roofline analysis, hardware specs, and benchmarking utilities
 - `Fuser/` — auto-router, orchestration pipeline, CLIs, Gradio UIs
 - `triton_kernel_agent/templates/` — Jinja templates used when prompting TritonKernelAgent
 - `examples/` — sample problems and prompt snippets
@@ -232,7 +304,7 @@ It includes selected L1/L2/L3 problems with:
 
 ## Documentation & Community
 
-- Architecture and deep-dive docs: `Coming Soon`
+- Optimization pipeline docs: see [Kernel Optimization Pipeline](#kernel-optimization-pipeline) above
 - Issues: https://github.com/pytorch-labs/KernelAgent/issues
 - Blog post: https://pytorch.org/blog/kernelfalcon-autonomous-gpu-kernel-generation-via-deep-agents/
 

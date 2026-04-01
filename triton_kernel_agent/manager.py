@@ -38,6 +38,8 @@ class WorkerManager:
         openai_model: str = "gpt-5",
         high_reasoning_effort: bool = True,
         target_platform: str = "cuda",
+        no_cusolver: bool = False,
+        test_timeout_s: int = 30,
     ):
         """
         Initialize the worker manager.
@@ -51,6 +53,8 @@ class WorkerManager:
             openai_model: OpenAI model name
             high_reasoning_effort: Whether to use high reasoning effort for OpenAI models
             target_platform: Target platform ('cuda' or 'xpu')
+            no_cusolver: If True, disables cuSolver library usage
+            test_timeout_s: Timeout in seconds for test execution
         """
         self.num_workers = num_workers
         self.max_rounds = max_rounds
@@ -59,6 +63,8 @@ class WorkerManager:
         self.openai_model = openai_model
         self.high_reasoning_effort = high_reasoning_effort
         self.target_platform = target_platform
+        self.no_cusolver = no_cusolver
+        self.test_timeout_s = test_timeout_s
 
         # Setup logging
         if log_dir is None:
@@ -111,7 +117,7 @@ class WorkerManager:
     def run_verification(
         self,
         kernel_seeds: list[str],
-        test_code: str,
+        test_code: list[str],
         problem_description: str,
         session_log_dir: Path | None = None,
     ) -> dict[str, Any | None]:
@@ -120,7 +126,7 @@ class WorkerManager:
 
         Args:
             kernel_seeds: List of initial kernel implementations
-            test_code: Test code to verify kernel correctness
+            test_code: List of test code strings (primary + additional tests)
             problem_description: Description of the problem
             session_log_dir: Optional session directory for worker logs
 
@@ -164,6 +170,8 @@ class WorkerManager:
                     self.openai_model,
                     self.high_reasoning_effort,
                     self.target_platform,
+                    self.no_cusolver,
+                    self.test_timeout_s,
                 )
 
                 process = mp.Process(target=worker_process, args=args)
@@ -216,7 +224,7 @@ class WorkerManager:
 def worker_process(
     worker_id: int,
     kernel_code: str,
-    test_code: str,
+    test_code: list[str],
     problem_description: str,
     workdir: Path,
     log_dir: Path,
@@ -228,6 +236,8 @@ def worker_process(
     openai_model: str,
     high_reasoning_effort: bool,
     target_platform: str,
+    no_cusolver: bool = False,
+    test_timeout_s: int = 30,
 ):
     """
     Worker process for kernel verification and refinement.
@@ -247,6 +257,8 @@ def worker_process(
         openai_model=openai_model,
         high_reasoning_effort=high_reasoning_effort,
         target_platform=target_platform,
+        no_cusolver=no_cusolver,
+        test_timeout_s=test_timeout_s,
     )
 
     result = worker.run(

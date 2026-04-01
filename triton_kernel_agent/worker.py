@@ -26,10 +26,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from triton_kernel_agent.platform_config import get_platform
+from triton_kernel_agent.worker_util import format_test_code_for_llm
+from utils.providers import get_model_provider
+
 from .prompt_manager import PromptManager
 from .worker_util import _run_test_multiprocess
-from utils.providers import get_model_provider
-from triton_kernel_agent.platform_config import get_platform
 
 
 DISALLOWED_TORCH_PATTERNS = [
@@ -132,6 +134,8 @@ class VerificationWorker:
         openai_model: str = "gpt-5",
         high_reasoning_effort: bool = True,
         target_platform: str = "cuda",
+        no_cusolver: bool = False,
+        test_timeout_s: int = 30,
     ):
         """
         Initialize a verification worker.
@@ -146,6 +150,8 @@ class VerificationWorker:
             openai_model: Model name for refinement
             high_reasoning_effort: Whether to use high reasoning effort for OpenAI models
             target_platform: Target platform default: cuda
+            no_cusolver: If True, disables cuSolver library usage
+            test_timeout_s: Timeout in seconds for test execution
         """
         self.worker_id = worker_id
         self.workdir = Path(workdir)
@@ -155,10 +161,12 @@ class VerificationWorker:
         self.openai_model = openai_model
         self.high_reasoning_effort = high_reasoning_effort
         self._platform_config = get_platform(target_platform)
+        self.no_cusolver = no_cusolver
+        self.test_timeout_s = test_timeout_s
 
         # Setup files
         self.kernel_file = self.workdir / "kernel.py"
-        self.test_file = self.workdir / "test_kernel.py"
+        self.test_files: list[Path] = []
 
         # History for LLM context
         self.history = deque(maxlen=history_size)
@@ -190,7 +198,10 @@ class VerificationWorker:
         self.logger.addHandler(handler)
 
     def _extract_code_from_response(
-        self, response_text: str, language: str = "python"
+        self,
+        response_text: str,
+        language: str = "python",
+        prefer_kernel_function: bool = False,
     ) -> str | None:
         """
         Extract code from LLM response text.
@@ -198,6 +209,11 @@ class VerificationWorker:
         Args:
             response_text: The full LLM response text
             language: The expected language (default: python)
+            prefer_kernel_function: When True and multiple code blocks are
+                found, prefer the block that defines ``kernel_function``
+                (falling back to the longest block).  Use this when the
+                prompt contains additional test code that the LLM may echo
+                back.
 
         Returns:
             Extracted code or None if no valid code block found
@@ -210,16 +226,21 @@ class VerificationWorker:
         pattern = rf"```{language}\s*\n(.*?)```"
         matches = re.findall(pattern, response_text, re.DOTALL)
 
-        if matches:
-            # Return the first match (largest code block)
-            return matches[0].strip()
-
-        # Try generic code blocks without language marker
-        pattern = r"```\s*\n(.*?)```"
-        matches = re.findall(pattern, response_text, re.DOTALL)
+        if not matches:
+            # Try generic code blocks without language marker
+            pattern = r"```\s*\n(.*?)```"
+            matches = re.findall(pattern, response_text, re.DOTALL)
 
         if matches:
-            # Return the first match
+            if prefer_kernel_function and len(matches) > 1:
+                # When additional tests are in the prompt the LLM may echo
+                # wrapper code.  Prefer the block defining kernel_function.
+                for block in matches:
+                    if re.search(r"\bdef\s+kernel_function\b", block):
+                        return block.strip()
+                # Fallback: return the longest block
+                return max(matches, key=len).strip()
+            # Default: return the first match
             return matches[0].strip()
 
         # If no code blocks found, check if the entire response looks like code
@@ -245,17 +266,28 @@ class VerificationWorker:
         self.kernel_file.write_text(kernel_code)
         self.logger.info("Updated kernel file")
 
-    def _write_files(self, kernel_code: str, test_code: str):
+    def _write_files(self, kernel_code: str, test_code: list[str]):
         """Write kernel and test code to files.
 
         Note: The test code should import the kernel function from the kernel file:
             from kernel import kernel_function
 
         Both files are written to the same directory (workdir).
+
+        Args:
+            kernel_code: The kernel source code.
+            test_code: List of test code strings. ``test_code[0]`` is the
+                primary test written to ``test_kernel.py``; any subsequent
+                entries are written to ``test_extra_{i}_kernel.py``.
         """
         self.kernel_file.write_text(kernel_code)
-        self.test_file.write_text(test_code)
-        self.logger.info("Wrote kernel and test files")
+        self.test_files = []
+        for i, code in enumerate(test_code):
+            name = "test_kernel.py" if i == 0 else f"test_extra_{i}_kernel.py"
+            path = self.workdir / name
+            path.write_text(code)
+            self.test_files.append(path)
+        self.logger.info("Wrote kernel and %d test file(s)", len(self.test_files))
 
     def _strip_comments_and_strings(self, code: str) -> str:
         """Remove comments and docstrings to avoid false positives when scanning code."""
@@ -272,37 +304,41 @@ class VerificationWorker:
 
     def _run_test(self) -> tuple[bool, str, str]:
         """
-        Run the test script and capture results.
+        Run all test scripts sequentially (``&&`` semantics).
 
         Returns:
             Tuple of (success, stdout, stderr)
         """
-        cmd = [sys.executable, str(self.test_file)]
-
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=str(self.workdir),
-                capture_output=True,
-                text=True,
-                timeout=30,  # 30 second timeout
-            )
-
-            success = result.returncode == 0
-            if success:
-                self.logger.info("Test passed")
-            else:
-                self.logger.error(
-                    "Test failed. Exit code: %s, stderr: %s",
-                    result.returncode,
-                    result.stderr[:500],
+            for test_file in self.test_files:
+                if not test_file.exists():
+                    continue
+                result = subprocess.run(
+                    [sys.executable, str(test_file)],
+                    cwd=str(self.workdir),
+                    capture_output=True,
+                    text=True,
+                    timeout=self.test_timeout_s,
                 )
+                if result.returncode != 0:
+                    self.logger.error(
+                        "Test %s failed. Exit code: %s, stderr: %s",
+                        test_file.name,
+                        result.returncode,
+                        result.stderr[:2000],
+                    )
+                    return False, result.stdout, result.stderr
+                self.logger.info("Test %s passed", test_file.name)
 
-            return success, result.stdout, result.stderr
+            return True, result.stdout, result.stderr
 
         except subprocess.TimeoutExpired:
             self.logger.error("Test timed out")
-            return False, "", "Test execution timed out after 30 seconds"
+            return (
+                False,
+                "",
+                f"Test execution timed out after {self.test_timeout_s} seconds",
+            )
         except Exception as e:
             self.logger.error(f"Test execution error: {e}")
             return False, "", str(e)
@@ -352,9 +388,11 @@ class VerificationWorker:
                         history_context += f"\nAttempt {i + 1}:\n"
                         history_context += f"Kernel code:\n```python\n{round_data['kernel_code'][:500]}...\n```\n"
                         if round_data.get("stderr"):
-                            history_context += f"Error: {round_data['stderr'][:200]}\n"
+                            history_context += f"Error: {round_data['stderr'][:2000]}\n"
                         if round_data.get("stdout"):
-                            history_context += f"Output: {round_data['stdout'][:200]}\n"
+                            history_context += (
+                                f"Output: {round_data['stdout'][:1000]}\n"
+                            )
 
                 # Create refinement prompt using template
                 prompt = self.prompt_manager.render_kernel_refinement_prompt(
@@ -363,6 +401,7 @@ class VerificationWorker:
                     kernel_code=kernel_code,
                     error_info=error_info,
                     history_context=history_context,
+                    no_cusolver=self.no_cusolver,
                 )
 
                 # Call LLM API
@@ -370,7 +409,10 @@ class VerificationWorker:
                 response_text = self._call_llm(messages, max_tokens=20000)
 
                 # Extract refined kernel from response
-                refined_kernel = self._extract_code_from_response(response_text)
+                refined_kernel = self._extract_code_from_response(
+                    response_text,
+                    prefer_kernel_function=getattr(self, "_has_multiple_tests", False),
+                )
 
                 if refined_kernel:
                     self.logger.info(
@@ -420,7 +462,7 @@ class VerificationWorker:
     def run(
         self,
         kernel_code: str,
-        test_code: str,
+        test_code: list[str],
         problem_description: str,
         success_event: mp.Event,
     ) -> dict[str, Any]:
@@ -429,7 +471,7 @@ class VerificationWorker:
 
         Args:
             kernel_code: Initial kernel implementation
-            test_code: Test code to verify kernel
+            test_code: List of test code strings (primary + additional tests)
             problem_description: Problem description for context
             success_event: Shared event to check if another worker succeeded
 
@@ -437,6 +479,7 @@ class VerificationWorker:
             Dictionary with results
         """
         self.logger.info(f"Starting verification for worker {self.worker_id}")
+        self._has_multiple_tests = len(test_code) > 1
 
         current_kernel = kernel_code
 
@@ -455,33 +498,31 @@ class VerificationWorker:
 
             # Write files - test only on first round, kernel every round
             if round_num == 0:
-                # First round: write both kernel and test
+                # First round: write both kernel and test(s)
                 self._write_files(current_kernel, test_code)
             else:
                 # Subsequent rounds: only update kernel, test remains unchanged
                 self._write_kernel(current_kernel)
 
-            violation = self._detect_pytorch_compute(current_kernel)
+            # Run verification (additional tests chained automatically by _run_test)
+            success, stdout, stderr, violation = self._single_verification_pass(
+                current_kernel
+            )
+
             if violation:
-                message = f"Disallowed PyTorch usage detected: {violation}"
-                self.logger.error(message)
-                self._log_round(round_num + 1, False, current_kernel, "", message)
+                self._log_round(round_num + 1, False, current_kernel, "", violation)
                 error_info = {
                     "stdout": "",
-                    "stderr": message,
+                    "stderr": violation,
                     "history": list(self.history),
                 }
                 current_kernel = self._refine_kernel(
-                    current_kernel, error_info, problem_description, test_code
+                    current_kernel,
+                    error_info,
+                    problem_description,
+                    format_test_code_for_llm(test_code),
                 )
                 continue
-
-            # Run test
-            success, stdout, stderr = (
-                self._run_test()
-                if os.getenv("KA_PROCESS_USE_SYS_EXECUTABLE", "1") == "1"
-                else _run_test_multiprocess(self.logger, self.workdir, self.test_file)
-            )
 
             # Log round
             self._log_round(round_num + 1, success, current_kernel, stdout, stderr)
@@ -506,7 +547,10 @@ class VerificationWorker:
             }
 
             current_kernel = self._refine_kernel(
-                current_kernel, error_info, problem_description, test_code
+                current_kernel,
+                error_info,
+                problem_description,
+                format_test_code_for_llm(test_code),
             )
 
         # Max rounds reached without success
@@ -518,3 +562,124 @@ class VerificationWorker:
             "rounds": self.max_rounds,
             "history": list(self.history),
         }
+
+    def _single_verification_pass(
+        self, kernel_code: str
+    ) -> tuple[bool, str, str, str | None]:
+        """
+        Run a single verification pass on the kernel.
+
+        Returns:
+            Tuple of (success, stdout, stderr, violation_message)
+            - violation_message is set if PyTorch usage detected, None otherwise
+        """
+        violation = self._detect_pytorch_compute(kernel_code)
+        if violation:
+            message = f"Disallowed PyTorch usage detected: {violation}"
+            self.logger.error(message)
+            return False, "", message, message
+
+        success, stdout, stderr = (
+            self._run_test()
+            if os.getenv("KA_PROCESS_USE_SYS_EXECUTABLE", "1") == "1"
+            else _run_test_multiprocess(
+                self.logger,
+                self.workdir,
+                self.test_files,
+            )
+        )
+
+        return success, stdout, stderr, None
+
+    def verify_with_refinement(
+        self,
+        kernel_code: str,
+        test_code: list[str],
+        problem_description: str,
+        max_refine_attempts: int = 3,
+    ) -> tuple[bool, str, str]:
+        """
+        Verify kernel correctness with refinement attempts.
+
+        This is a simpler API for single-pass verification with refinement,
+        useful for optimization loops that manage their own iteration.
+
+        Args:
+            kernel_code: Kernel code to verify
+            test_code: List of test code strings (primary + additional tests)
+            problem_description: Problem description for refinement context
+            max_refine_attempts: Maximum refinement attempts if verification fails
+
+        Returns:
+            Tuple of (success, final_kernel_code, error_feedback)
+            - success: Whether the kernel passed verification
+            - final_kernel_code: The verified (possibly refined) kernel
+            - error_feedback: Error message if failed, empty string if success
+        """
+        current_kernel = kernel_code
+        self._has_multiple_tests = len(test_code) > 1
+
+        # Write files for testing (primary + additional tests)
+        self._write_files(current_kernel, test_code)
+
+        # Initial verification (additional tests chained automatically by _run_test)
+        success, stdout, stderr, violation = self._single_verification_pass(
+            current_kernel
+        )
+
+        if violation:
+            # Log initial failure so refinement LLM sees it in history
+            self._log_round(0, False, current_kernel, stdout, stderr)
+            return False, current_kernel, violation
+
+        if success:
+            self.logger.info("✅ Verification passed on first attempt")
+            return True, current_kernel, ""
+
+        # Refinement loop
+        for attempt in range(1, max_refine_attempts + 1):
+            error_output = stderr if stderr.strip() else stdout
+            self.logger.info(f"Refinement attempt {attempt}/{max_refine_attempts}...")
+
+            error_info = {
+                "stdout": stdout,
+                "stderr": stderr,
+                "error_type": (
+                    "compilation"
+                    if "CompilationError" in error_output
+                    or "SyntaxError" in error_output
+                    else "runtime"
+                ),
+            }
+
+            # Refine kernel
+            refined_kernel = self._refine_kernel(
+                current_kernel,
+                error_info,
+                problem_description,
+                format_test_code_for_llm(test_code),
+            )
+
+            # Write and test refined kernel
+            self._write_kernel(refined_kernel)
+            success, stdout, stderr, violation = self._single_verification_pass(
+                refined_kernel
+            )
+
+            if violation:
+                current_kernel = refined_kernel
+                continue
+
+            if success:
+                self.logger.info(
+                    f"✅ Verification passed after refinement (attempt {attempt})"
+                )
+                return True, refined_kernel, ""
+
+            current_kernel = refined_kernel
+
+        # All attempts exhausted
+        error_output = stderr if stderr.strip() else stdout
+        error_feedback = f"Verification failed after {max_refine_attempts} refinement attempts:\n{error_output[:2000]}"
+        self.logger.warning(f"❌ {error_feedback[:200]}...")
+        return False, current_kernel, error_feedback

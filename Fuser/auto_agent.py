@@ -54,6 +54,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from Fuser.pipeline import run_pipeline
+from utils.config_injectable import config_injectable
 
 # Local imports (available inside repo)
 from triton_kernel_agent import TritonKernelAgent
@@ -61,7 +62,7 @@ from triton_kernel_agent.platform_config import (
     get_platform_choices,
     get_platform,
 )
-from utils.providers.models import get_model_provider
+from utils.providers.models import get_model_provider, is_model_available
 
 
 # ------------------------
@@ -136,6 +137,20 @@ def _dotted_name(n: ast.AST) -> str:
         parts.append(cur.id)
     parts.reverse()
     return ".".join(parts)
+
+
+def _validate_cfg_models(cfg) -> None:
+    """Given a router config, remove all unavailable model choices."""
+    if (ka_model := cfg.get("ka_model")) and not is_model_available(ka_model):
+        del cfg["ka_model"]
+
+    if models := cfg.get("llm_models"):
+        remove = [k for k, v in models.items() if not is_model_available(v)]
+        for k in remove:
+            del models[k]
+
+        if not models:
+            del cfg["llm_models"]
 
 
 @dataclass
@@ -306,6 +321,7 @@ class RouteResult:
     kernel_code: str | None = None
 
 
+@config_injectable
 class AutoKernelRouter:
     def __init__(
         self,
@@ -329,7 +345,12 @@ class AutoKernelRouter:
         verify: bool = True,
         dispatch_jobs: int = 2,
         allow_fallback: bool = True,
-        target_platform: str | None = None,
+        target_platform: str = "cuda",
+        ignore_router_config: bool = False,
+        use_router_cache: bool = True,
+        no_cusolver: bool = False,
+        test_timeout_s: int = 30,
+        test_code: str | None = None,
     ) -> None:
         self.ka_model = ka_model
         self.ka_num_workers = ka_num_workers
@@ -352,20 +373,29 @@ class AutoKernelRouter:
         self.dispatch_jobs = dispatch_jobs
         self.allow_fallback = allow_fallback
         self.platform_config = get_platform(target_platform)
+        self.ignore_router_config = ignore_router_config
+        self.use_router_cache = use_router_cache
+        self.no_cusolver = no_cusolver
+        self.test_timeout_s = test_timeout_s
+        self.test_code = test_code
 
-    def _solve_with_kernelagent(self, problem_code: str) -> RouteResult:
+    def _solve_with_kernelagent(
+        self, problem_code: str, test_code: str | None = None
+    ) -> RouteResult:
         agent = TritonKernelAgent(
             num_workers=self.ka_num_workers,
             max_rounds=self.ka_max_rounds,
             model_name=self.ka_model,
             high_reasoning_effort=self.ka_high_reasoning,
             target_platform=self.platform_config,
+            no_cusolver=self.no_cusolver,
+            test_timeout_s=self.run_timeout_s,
         )
         try:
             # Ensure exceptions in KernelAgent do not abort routing; return a structured failure
             try:
                 res = agent.generate_kernel(
-                    problem_description=problem_code, test_code=None
+                    problem_description=problem_code, test_code=test_code
                 )
             except BaseException as exc:
                 return RouteResult(
@@ -424,6 +454,7 @@ class AutoKernelRouter:
                 verify=self.verify,
                 compose_max_iters=self.compose_max_iters,
                 target_platform=self.platform_config.name,
+                test_timeout_s=self.test_timeout_s,
             )
         except BaseException as exc:  # catch SystemExit and others
             # Return a structured failure so caller can decide on fallback
@@ -453,28 +484,33 @@ class AutoKernelRouter:
             details=res,
         )
 
-    def solve(self, problem_path: Path) -> RouteResult:
+    def solve(self, problem_path: Path, test_code: str | None = None) -> RouteResult:
         code = problem_path.read_text(encoding="utf-8")
+        # Use explicitly-passed test_code, falling back to the instance default
+        test_code = test_code if test_code is not None else self.test_code
         cx = analyze_problem_code(code)
 
         # Default heuristic-only decision used STRICTLY as a last-resort tie-breaker
         heuristic_prefers_fuser = cx.route_to_fuser()
 
         # Cache lookup by content hash to avoid repeated router calls
+        cache = {}
         code_hash = _file_sha256_text(code)
-        cache = _load_router_cache()
-        cached = cache.get(code_hash)
-
         strategy: str | None = None
         route_conf: float | None = None
         route_cfg: dict[str, Any] = {}
 
-        if isinstance(cached, dict):
-            strategy = (
-                str(cached.get("route_strategy") or cached.get("route") or "") or None
-            )
-            route_conf = cached.get("confidence")
-            route_cfg = cached.get("config") or {}
+        if self.use_router_cache:
+            cache = _load_router_cache()
+            cached = cache.get(code_hash)
+
+            if isinstance(cached, dict):
+                strategy = (
+                    str(cached.get("route_strategy") or cached.get("route") or "")
+                    or None
+                )
+                route_conf = cached.get("confidence")
+                route_cfg = cached.get("config") or {}
 
         if strategy is None:
             # Try LLM-driven decision
@@ -483,11 +519,14 @@ class AutoKernelRouter:
                     problem_path, code, cx
                 )
                 # Persist in cache for future runs
-                cache[code_hash] = info.get("parsed") or {
-                    "route_strategy": strategy,
-                    "confidence": route_conf,
-                }
-                _save_router_cache(cache)
+                if self.use_router_cache:
+                    cache[code_hash] = info.get("parsed") or {
+                        "route_strategy": strategy,
+                        "confidence": route_conf,
+                    }
+                    route_cfg = cache[code_hash].get("config") or {}
+                    _validate_cfg_models(route_cfg)
+                    _save_router_cache(cache)
             except Exception:
                 # No provider or failure; fall back later
                 pass
@@ -503,8 +542,8 @@ class AutoKernelRouter:
             # Confidence too low or invalid JSON; resort to heuristic
             strategy = "fuser" if heuristic_prefers_fuser else "kernelagent"
 
-        # Apply optional dynamic config from router
-        if isinstance(route_cfg, dict):
+        # Apply optional dynamic config from router (skip if ignore requested)
+        if isinstance(route_cfg, dict) and not self.ignore_router_config:
             # KernelAgent tuning
             self.ka_max_rounds = int(route_cfg.get("ka_max_rounds", self.ka_max_rounds))
             self.ka_num_workers = int(
@@ -530,7 +569,7 @@ class AutoKernelRouter:
 
         # Execute per strategy with symmetric fallback governed by allow_fallback
         if strategy == "kernelagent":
-            ka_res = self._solve_with_kernelagent(code)
+            ka_res = self._solve_with_kernelagent(code, test_code=test_code)
             if ka_res.success or not self.allow_fallback:
                 return ka_res
             return self._solve_with_fuser(problem_path)
@@ -538,9 +577,9 @@ class AutoKernelRouter:
             fuser_res = self._solve_with_fuser(problem_path)
             if fuser_res.success or not self.allow_fallback:
                 return fuser_res
-            return self._solve_with_kernelagent(code)
+            return self._solve_with_kernelagent(code, test_code=test_code)
         elif strategy == "kernel_then_fuser":
-            ka_res = self._solve_with_kernelagent(code)
+            ka_res = self._solve_with_kernelagent(code, test_code=test_code)
             if ka_res.success or not self.allow_fallback:
                 return ka_res
             return self._solve_with_fuser(problem_path)
@@ -548,7 +587,7 @@ class AutoKernelRouter:
             fuser_res = self._solve_with_fuser(problem_path)
             if fuser_res.success or not self.allow_fallback:
                 return fuser_res
-            return self._solve_with_kernelagent(code)
+            return self._solve_with_kernelagent(code, test_code=test_code)
 
     # -------- LLM decision helper --------
     def _llm_decide_route(
@@ -682,6 +721,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--problem", required=True, help="Absolute path to the problem file")
     p.add_argument(
+        "--test-paths",
+        default=None,
+        help="Path to an additional test file for the kernel agent",
+    )
+    p.add_argument(
+        "--config",
+        default=None,
+        help="Path to AutoAgentRouter config file. When provided, all other CLI args are ignored.",
+    )
+    p.add_argument(
         "--ka-model",
         default=None,
         help="Model for KernelAgent (optional; uses env default if omitted)",
@@ -689,6 +738,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ka-workers", type=int, default=4)
     p.add_argument("--ka-rounds", type=int, default=10)
     p.add_argument("--no-ka-high-reasoning", action="store_true")
+    p.add_argument("--test-timeout-s", type=int, default=30)
     p.add_argument("--router-model", default="gpt-5")
     p.add_argument("--no-router-high-reasoning", action="store_true")
     p.add_argument("--router-temp", type=float, default=0.2)
@@ -705,10 +755,25 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dispatch-jobs", type=int, default=2)
     p.add_argument("--no-fallback", action="store_true")
     p.add_argument(
+        "--ignore-router-config",
+        action="store_true",
+        help="Ignore router config. Use CLI-provided model/config arguments",
+    )
+    p.add_argument(
+        "--no-router-cache",
+        action="store_true",
+        help="Disable router cache (do not read from or write to cache)",
+    )
+    p.add_argument(
         "--target-platform",
         default="cuda",
         choices=get_platform_choices(),
         help="Target platform (default: cuda)",
+    )
+    p.add_argument(
+        "--no-cusolver",
+        action="store_true",
+        help="Disable cuSolver library usage in generated kernels",
     )
     args = p.parse_args(argv)
 
@@ -720,28 +785,49 @@ def main(argv: list[str] | None = None) -> int:
         print(f"problem not found: {problem_path}", file=sys.stderr)
         return 2
 
-    router = AutoKernelRouter(
-        ka_model=args.ka_model,
-        ka_num_workers=args.ka_workers,
-        ka_max_rounds=args.ka_rounds,
-        ka_high_reasoning=(not args.no_ka_high_reasoning),
-        router_model=args.router_model,
-        router_high_reasoning=(not args.no_router_high_reasoning),
-        router_temperature=args.router_temp,
-        router_max_tokens=args.router_max_tokens,
-        extract_model=args.extract_model,
-        dispatch_model=args.dispatch_model,
-        compose_model=args.compose_model,
-        workers=args.workers,
-        max_iters=args.max_iters,
-        llm_timeout_s=args.llm_timeout_s,
-        run_timeout_s=args.run_timeout_s,
-        compose_max_iters=args.compose_max_iters,
-        verify=args.verify,
-        dispatch_jobs=args.dispatch_jobs,
-        allow_fallback=(not args.no_fallback),
-        target_platform=args.target_platform,
-    )
+    # Read test code from --test-paths if provided
+    test_code: str | None = None
+    if args.test_paths:
+        tp_path = Path(args.test_paths).resolve()
+        if not tp_path.is_file():
+            print(f"test file not found: {tp_path}", file=sys.stderr)
+            return 2
+        test_code = tp_path.read_text(encoding="utf-8")
+
+    if args.config is not None:
+        print(
+            f"Using config file: {args.config} (other CLI args are ignored)",
+            file=sys.stderr,
+        )
+        router = AutoKernelRouter(config=args.config, test_code=test_code)
+    else:
+        router = AutoKernelRouter(
+            ka_model=args.ka_model,
+            ka_num_workers=args.ka_workers,
+            ka_max_rounds=args.ka_rounds,
+            ka_high_reasoning=(not args.no_ka_high_reasoning),
+            router_model=args.router_model,
+            router_high_reasoning=(not args.no_router_high_reasoning),
+            router_temperature=args.router_temp,
+            router_max_tokens=args.router_max_tokens,
+            extract_model=args.extract_model,
+            dispatch_model=args.dispatch_model,
+            compose_model=args.compose_model,
+            workers=args.workers,
+            max_iters=args.max_iters,
+            llm_timeout_s=args.llm_timeout_s,
+            run_timeout_s=args.run_timeout_s,
+            compose_max_iters=args.compose_max_iters,
+            verify=args.verify,
+            dispatch_jobs=args.dispatch_jobs,
+            allow_fallback=(not args.no_fallback),
+            target_platform=args.target_platform,
+            ignore_router_config=args.ignore_router_config,
+            use_router_cache=(not args.no_router_cache),
+            no_cusolver=args.no_cusolver,
+            test_timeout_s=args.run_timeout_s,
+            test_code=test_code,
+        )
 
     try:
         res = router.solve(problem_path)

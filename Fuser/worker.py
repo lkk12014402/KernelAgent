@@ -126,9 +126,7 @@ class Worker:
             Uses EventAdapter for OpenAI otherwise Provider inferface
             """
             provider = get_model_provider(self.cfg.model)
-            print(f"==========================================provider: {provider}")
-            # if provider.name != "openai":
-            if True:
+            if provider.name != "openai":
                 # Call LLM directly using provider
                 messages: list[dict[str, str]] = [
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -204,8 +202,6 @@ class Worker:
             # Execute
             run_root = self.dirs["runs"] / f"iteration_{k}"
             run_root.mkdir(parents=True, exist_ok=True)
-
-            print(f"==================================== Execute: ?????????????????????????, self.cfg.run_timeout_s: {self.cfg.run_timeout_s}")
             rr = run_candidate(
                 artifacts_code_path=latest_dir / "code.py",
                 run_root=run_root,
@@ -214,7 +210,6 @@ class Worker:
                 deny_network=self.cfg.deny_network,
                 cancel_event=self.cancel_event,
             )
-            print(f"==================================rr: {rr}")
 
             if rr.passed:
                 self.logger.info("PASS at iter %d via %s", k, rr.validator_used)

@@ -333,6 +333,8 @@ def run(
     jobs: int = 1,
     target_platform: str = "cuda",
     max_iters: int = 10,
+    no_cusolver: bool = False,
+    test_timeout_s: int = 30,
 ) -> Path:
     """Dispatch subgraphs to KernelAgent with optional parallelism.
 
@@ -369,6 +371,8 @@ def run(
             max_rounds=max_iters,
             model_name=agent_model,
             target_platform=platform,
+            no_cusolver=no_cusolver,
+            test_timeout_s=test_timeout_s,
         )
         try:
             result = local_agent.generate_kernel(
@@ -452,10 +456,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Max concurrent subgraphs to dispatch (default: 2); use 'auto' to match subgraph count",
     )
     p.add_argument(
+        "--test-timeout-s",
+        type=int,
+        default=30,
+        help="Timeout for each test (default: 30s)",
+    )
+    p.add_argument(
         "--target-platform",
         default="cuda",
         choices=get_platform_choices(),
         help="Target platform (default: cuda)",
+    )
+    p.add_argument(
+        "--no-cusolver",
+        action="store_true",
+        help="Disable cuSolver library usage in generated kernels",
     )
     args = p.parse_args(argv)
 
@@ -485,6 +500,8 @@ def main(argv: list[str] | None = None) -> int:
         agent_model=args.agent_model,
         jobs=jobs_val,
         target_platform=args.target_platform,
+        no_cusolver=args.no_cusolver,
+        test_timeout_s=args.test_timeout_s,
     )
     print(str(summary_path))
     return 0

@@ -16,7 +16,7 @@
 
 from pathlib import Path
 
-from triton_kernel_agent.platform_config import PlatformConfig, get_platform
+from triton_kernel_agent.platform_config import get_platform, PlatformConfig
 
 try:
     from jinja2 import Environment, FileSystemLoader, Template
@@ -37,10 +37,14 @@ class PromptManager:
     for test generation, kernel generation, and kernel refinement.
     """
 
+    # Templates that can be overridden via config
+    _OVERRIDABLE = {"kernel_optimization", "reflexion_prompt", "triton_guidelines"}
+
     def __init__(
         self,
         templates_dir: str | None = None,
         target_platform: PlatformConfig | None = None,
+        template_overrides: dict[str, str] | None = None,
     ):
         """
         Initialize the prompt manager.
@@ -48,6 +52,10 @@ class PromptManager:
         Args:
             templates_dir: Path to the templates directory. If None, uses default.
             target_platform: Target platform PlatformConfig
+            template_overrides: Optional dict mapping logical template names to
+                absolute file paths for custom .j2 files.  Only the optimization
+                templates (kernel_optimization, reflexion_prompt, triton_guidelines)
+                can be overridden; other keys are ignored.
         """
         if not JINJA2_AVAILABLE:
             raise ImportError(
@@ -63,6 +71,8 @@ class PromptManager:
         else:
             # Default to bundled templates directory within the package
             self.templates_dir = Path(__file__).parent / "templates"
+
+        self._template_overrides = template_overrides
 
         if not self.templates_dir.exists():
             raise FileNotFoundError(
@@ -80,24 +90,58 @@ class PromptManager:
         self._load_templates()
 
     def _load_templates(self):
-        """Load all available templates."""
+        """Load all available templates.
+
+        For the three optimization-related templates (kernel_optimization,
+        reflexion_prompt, triton_guidelines), an override path supplied via
+        ``template_overrides`` takes precedence over the bundled default.
+        Non-optimization templates are always loaded from ``templates_dir``.
+        """
         self.templates = {}
 
-        # Define template mappings
+        # Define template mappings (required templates)
         template_files = {
             "test_generation": "test_generation.j2",
             "kernel_generation": "kernel_generation.j2",
             "kernel_refinement": "kernel_refinement.j2",
+            "kernel_optimization": "kernel_optimization.j2",
             "triton_guidelines": "triton_guidelines.j2",
         }
 
-        # Load each template
+        # Optional templates (loaded if present)
+        optional_template_files = {
+            "reflexion_prompt": "reflexion_prompt.j2",
+        }
+
+        # Load required templates
         for template_name, template_file in template_files.items():
-            template_path = self.templates_dir / template_file
-            if template_path.exists():
-                self.templates[template_name] = self.env.get_template(template_file)
+            override_path = (self._template_overrides or {}).get(template_name)
+            if override_path and template_name in self._OVERRIDABLE:
+                # Load from absolute path
+                p = Path(override_path)
+                if not p.exists():
+                    raise FileNotFoundError(f"Template override not found: {p}")
+                self.templates[template_name] = self.env.from_string(p.read_text())
             else:
-                raise FileNotFoundError(f"Template file not found: {template_path}")
+                # Default: load from templates_dir
+                template_path = self.templates_dir / template_file
+                if template_path.exists():
+                    self.templates[template_name] = self.env.get_template(template_file)
+                else:
+                    raise FileNotFoundError(f"Template file not found: {template_path}")
+
+        # Load optional templates
+        for template_name, template_file in optional_template_files.items():
+            override_path = (self._template_overrides or {}).get(template_name)
+            if override_path and template_name in self._OVERRIDABLE:
+                p = Path(override_path)
+                if not p.exists():
+                    raise FileNotFoundError(f"Template override not found: {p}")
+                self.templates[template_name] = self.env.from_string(p.read_text())
+            else:
+                template_path = self.templates_dir / template_file
+                if template_path.exists():
+                    self.templates[template_name] = self.env.get_template(template_file)
 
     def render_test_generation_prompt(
         self, problem_description: str, provided_test_code: str | None = None
@@ -124,6 +168,7 @@ class PromptManager:
         problem_description: str,
         test_code: str,
         triton_guidelines: str | None = None,
+        no_cusolver: bool = False,
     ) -> str:
         """
         Render the kernel generation prompt.
@@ -132,6 +177,7 @@ class PromptManager:
             problem_description: Description of the kernel to generate
             test_code: Test code that the kernel must pass
             triton_guidelines: Optional guidelines (if None, loads from template)
+            no_cusolver: If True, disables cuSolver library usage
 
         Returns:
             Rendered prompt string
@@ -147,6 +193,7 @@ class PromptManager:
             test_code=test_code,
             triton_guidelines=triton_guidelines,
             kernel_guidance=self.target_platform.kernel_guidance,
+            no_cusolver=no_cusolver,
         )
 
     def render_kernel_refinement_prompt(
@@ -157,6 +204,7 @@ class PromptManager:
         error_info: dict[str, str],
         history_context: str | None = None,
         triton_guidelines: str | None = None,
+        no_cusolver: bool = False,
     ) -> str:
         """
         Render the kernel refinement prompt.
@@ -168,6 +216,7 @@ class PromptManager:
             error_info: Dictionary with error information (stdout, stderr)
             history_context: Optional context from previous attempts
             triton_guidelines: Optional guidelines (if None, loads from template)
+            no_cusolver: If True, disables cuSolver library usage
 
         Returns:
             Rendered prompt string
@@ -186,7 +235,127 @@ class PromptManager:
             history_context=history_context,
             triton_guidelines=triton_guidelines,
             kernel_guidance=self.target_platform.kernel_guidance,
+            no_cusolver=no_cusolver,
         )
+
+    def render_kernel_optimization_prompt(
+        self,
+        problem_description: str,
+        kernel_code: str,
+        gpu_specs: dict,
+        roofline: dict,
+        category: str,
+        summary: str,
+        reasoning: str,
+        root_cause: dict,
+        recommended_fix: dict,
+        pytorch_baseline_ms: float | None = None,
+        current_best_ms: float | None = None,
+        error_feedback: str | None = None,
+        recent_attempts: list | None = None,
+        reflexions: list | None = None,
+        rag_context: str | None = None,
+    ) -> str:
+        """
+        Render the kernel optimization prompt.
+
+        Args:
+            problem_description: Description of the problem
+            kernel_code: Current kernel implementation
+            gpu_specs: GPU hardware specifications dict
+            roofline: Roofline analysis result dict with keys:
+                bottleneck, compute_sol_pct, memory_sol_pct, efficiency_pct,
+                headroom_pct, at_roofline, uses_tensor_cores, warnings
+            category: Bottleneck category ("memory", "compute", "underutilized")
+            summary: One-line bottleneck summary
+            reasoning: Explanation citing metrics
+            root_cause: Single root cause dict {"cause": "...", "evidence": [...]}
+            recommended_fix: Single fix dict {"fix": "...", "rationale": "..."}
+            pytorch_baseline_ms: PyTorch Eager baseline time in ms
+            current_best_ms: Current best kernel time in ms (for iterative opt)
+            error_feedback: Error message from previous failed attempt
+            recent_attempts: List of recent OptimizationAttempt objects for history
+            reflexions: List of Reflexion objects for self-reflection analysis
+            rag_context: Optional RAG-retrieved context with optimization patterns and code examples
+
+        Returns:
+            Rendered prompt string
+        """
+        template = self.templates["kernel_optimization"]
+
+        bottleneck = {
+            "category": category,
+            "summary": summary,
+            "reasoning": reasoning,
+            "root_cause": root_cause,
+            "recommended_fix": recommended_fix,
+        }
+
+        return template.render(
+            problem_description=problem_description,
+            kernel_code=kernel_code,
+            gpu_specs=gpu_specs,
+            roofline=roofline,
+            bottleneck=bottleneck,
+            pytorch_baseline_ms=pytorch_baseline_ms,
+            current_best_ms=current_best_ms,
+            error_feedback=error_feedback,
+            recent_attempts=recent_attempts,
+            reflexions=reflexions,
+            rag_context=rag_context,
+        )
+
+    def render_reflexion_prompt(self, attempt) -> str:
+        """
+        Render the reflexion prompt for analyzing an optimization attempt.
+
+        Args:
+            attempt: OptimizationAttempt object with attempt details
+
+        Returns:
+            Rendered prompt string for reflexion generation
+        """
+        if "reflexion_prompt" not in self.templates:
+            # Fallback if template not loaded - return inline prompt
+            return self._inline_reflexion_prompt(attempt)
+
+        template = self.templates["reflexion_prompt"]
+        return template.render(attempt=attempt)
+
+    def _inline_reflexion_prompt(self, attempt) -> str:
+        """Generate inline reflexion prompt when template is not available."""
+        config_str = (
+            ", ".join(f"{k}={v}" for k, v in attempt.config_changes.items())
+            if attempt.config_changes
+            else "no changes"
+        )
+
+        return f"""Analyze this kernel optimization attempt and generate a self-reflection.
+
+## Attempt Details
+- Round: {attempt.round_num}
+- Bottleneck: {attempt.bottleneck_category}
+- Root Cause: {attempt.root_cause}
+- Fix Applied: {attempt.recommended_fix}
+- Config: {config_str}
+
+## Results
+- Performance: {attempt.time_before_ms:.4f}ms → {attempt.time_after_ms:.4f}ms
+- Improvement: {attempt.improvement_pct:+.1f}%
+- NCU SOL: Compute {attempt.compute_sol_pct:.1f}%, Memory {attempt.memory_sol_pct:.1f}%
+- Passed: {attempt.passed_verification}
+
+Respond with JSON containing:
+{{
+    "was_diagnosis_correct": true/false,
+    "was_fix_effective": true/false,
+    "expected_outcome": "what you expected to happen",
+    "actual_outcome": "what actually happened",
+    "reasoning": "why the fix worked or didn't work",
+    "lessons": ["lesson 1", "lesson 2"],
+    "avoid_patterns": ["pattern to avoid"],
+    "try_patterns": ["pattern to try next"]
+}}"""
 
     def render_triton_guidelines(self) -> str:
         """
