@@ -1,10 +1,10 @@
 python -m Fuser.pipeline \
   --problem ../KernelBench/KernelBench/level1/19_ReLU.py \
   --target-platform xpu \
-  --extract-model minimax-m2.5 \
-  --dispatch-model minimax-m2.5 \
+  --extract-model MiniMaxAI/MiniMax-M2.5 \
+  --dispatch-model MiniMaxAI/MiniMax-M2.5 \
   --dispatch-jobs auto \
-  --compose-model minimax-m2.5 \
+  --compose-model MiniMaxAI/MiniMax-M2.5 \
   --workers 1 \
   --max-iters 5 \
   --llm-timeout-s 3000 \
